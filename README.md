@@ -6,7 +6,7 @@ Headless Next.js API (App Router route handlers only, no pages). Auth, roles, an
 
 - Next.js 16 (API routes only)
 - Prisma + Postgres
-- Passwordless auth — no Google OAuth, no passwords; a one-time emailed code and/or a device passkey (WebAuthn) — restricted to `ALLOWED_EMAIL_DOMAIN`, roles stored on `User.role` (`MEMBER` / `BOARD` / `EXEC_BOARD`). Being reworked from the current Google-OAuth-based `auth.ts` — see [ROADMAP.md](https://github.com/uic-logica/.github/blob/main/ROADMAP.md) Step 2 and backend#1.
+- Passwordless auth — no Google OAuth, no passwords; a one-time emailed code and/or a device passkey (WebAuthn) — restricted to `ALLOWED_EMAIL_DOMAIN`, roles stored on `User.role` (`MEMBER` / `BOARD` / `EXEC_BOARD`). Being reworked from the current Google-OAuth-based `auth.ts` — see [ROADMAP.md](https://github.com/uic-logica/.github/blob/main/ROADMAP.md) Step 2 and backend#10.
 
 ## Local setup
 
