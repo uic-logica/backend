@@ -20,6 +20,7 @@ Headless Next.js API (App Router route handlers only, no pages). Auth, roles, an
 - `prisma/schema.prisma` — data model. Add new tables here as new features (feed, events, attendance, forms) come online — see the repo's issues for what's next.
 - `auth.ts` — auth config: passwordless one-time emailed code, `.edu` domain restriction via `ALLOWED_EMAIL_DOMAIN`, session/role callback.
 - `app/api/auth/[...nextauth]/route.ts` — auth endpoint, don't touch unless changing providers.
+- `app/api/auth/otp/verify/route.ts` — `POST {email, code}` exchanges an emailed sign-in code for a session cookie. This is the endpoint the frontend calls; Auth.js's own callback is shaped for a link click and can't be driven from a form.
 - `lib/prisma.ts` — shared Prisma client, import this everywhere instead of `new PrismaClient()`.
 
 ## Workflow
