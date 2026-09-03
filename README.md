@@ -22,6 +22,8 @@ Headless Next.js API (App Router route handlers only, no pages). Auth, roles, an
 - `app/api/auth/[...nextauth]/route.ts` — auth endpoint, don't touch unless changing providers.
 - `app/api/auth/otp/verify/route.ts` — `POST {email, code}` exchanges an emailed sign-in code for a session cookie. This is the endpoint the frontend calls; Auth.js's own callback is shaped for a link click and can't be driven from a form.
 - `lib/prisma.ts` — shared Prisma client, import this everywhere instead of `new PrismaClient()`.
+- `app/api/profile`, `/posts`, `/events`, `/attendance`, `/forms` + their `Post`/`Event`/`Rsvp`/`Attendance`/`Form` models — **bare-minimum, throwaway scaffolding** for Steps 3–7 (`logica-lean`-marked throughout, see each roadmap issue's comments for specifics). A rough starting reference, not a finished implementation — attendance in particular has no real check-in verification yet.
+- `prisma/seed.ts` — throwaway local dev sample data matching the scaffolding above. Not wired into CI or `prisma migrate`; run with `npx tsx prisma/seed.ts`.
 
 ## Workflow
 
