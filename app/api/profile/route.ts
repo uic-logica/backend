@@ -5,15 +5,13 @@ import { prisma } from "@/lib/prisma";
 // logica-lean: bare-minimum self profile read/update for #7 (BE 3). No
 // involvement summary yet — real ticket adds that once attendance/feed data
 // exists to summarize.
+const SELF_FIELDS = { id: true, name: true, email: true, role: true, bio: true, major: true, gradYear: true } as const;
 
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, name: true, email: true, role: true, bio: true, major: true, gradYear: true },
-  });
+  const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: SELF_FIELDS });
   return NextResponse.json(user);
 }
 
@@ -45,7 +43,7 @@ export async function PATCH(request: NextRequest) {
   const user = await prisma.user.update({
     where: { id: session.user.id },
     data: { name, bio, major, gradYear },
-    select: { id: true, name: true, email: true, role: true, bio: true, major: true, gradYear: true },
+    select: SELF_FIELDS,
   });
   return NextResponse.json(user);
 }
