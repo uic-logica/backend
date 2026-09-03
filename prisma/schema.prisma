@@ -24,8 +24,12 @@ model User {
   gradYear      Int?
   createdAt     DateTime  @default(now())
 
-  accounts Account[]
-  sessions Session[]
+  accounts    Account[]
+  sessions    Session[]
+  posts       Post[]
+  rsvps       Rsvp[]
+  attendances Attendance[]
+  submissions Submission[]
 }
 
 // Required by @auth/prisma-adapter — do not rename fields.
@@ -63,4 +67,87 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// logica-lean: bare-minimum shape for #7 (BE 4/5/6/7) so FE has real
+// endpoints to E2E test against. No engagement counts, no soft delete, no
+// pagination cursor — whoever picks up the real ticket redesigns this.
+
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  location    String?
+  startsAt    DateTime
+  createdAt   DateTime @default(now())
+
+  rsvps       Rsvp[]
+  attendances Attendance[]
+}
+
+enum RsvpStatus {
+  GOING
+  NOT_GOING
+}
+
+model Rsvp {
+  id      String     @id @default(cuid())
+  eventId String
+  userId  String
+  status  RsvpStatus
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+model Attendance {
+  id          String   @id @default(cuid())
+  eventId     String
+  userId      String
+  checkedInAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+model Form {
+  id     String @id @default(cuid())
+  slug   String @unique
+  title  String
+
+  fields      FormField[]
+  submissions Submission[]
+}
+
+model FormField {
+  id     String @id @default(cuid())
+  formId String
+  label  String
+  type   String // logica-lean: free-text ("text" | "textarea" | ...), no enum/validation schema yet
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+}
+
+model Submission {
+  id        String   @id @default(cuid())
+  formId    String
+  userId    String
+  data      Json
+  createdAt DateTime @default(now())
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
