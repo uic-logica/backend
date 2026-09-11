@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { INVOLVEMENT_COUNTS, withInvolvement } from "@/lib/involvement";
 
-// logica-lean: bare-minimum self profile read/update for #7 (BE 3). No
-// involvement summary yet — real ticket adds that once attendance/feed data
-// exists to summarize.
-const SELF_FIELDS = { id: true, name: true, email: true, role: true, bio: true, major: true, gradYear: true } as const;
+const SELF_FIELDS = { id: true, name: true, email: true, image: true, role: true, bio: true, major: true, gradYear: true } as const;
+
+function isGradYear(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1900 && value <= 2100;
+}
+
+function trimmed(value: unknown): string | null | undefined {
+  if (typeof value !== "string") return value as null | undefined;
+  return value.trim() || null;
+}
 
 export async function GET() {
   const session = await auth();
@@ -27,23 +34,28 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { name, bio, major, gradYear } = (payload ?? {}) as Record<string, unknown>;
-  if (name !== undefined && typeof name !== "string") {
-    return NextResponse.json({ error: "`name` must be a string." }, { status: 400 });
+  if (name !== undefined && name !== null && typeof name !== "string") {
+    return NextResponse.json({ error: "`name` must be a string or null." }, { status: 400 });
   }
-  if (bio !== undefined && typeof bio !== "string") {
-    return NextResponse.json({ error: "`bio` must be a string." }, { status: 400 });
+  if (bio !== undefined && bio !== null && typeof bio !== "string") {
+    return NextResponse.json({ error: "`bio` must be a string or null." }, { status: 400 });
   }
-  if (major !== undefined && typeof major !== "string") {
-    return NextResponse.json({ error: "`major` must be a string." }, { status: 400 });
+  if (major !== undefined && major !== null && typeof major !== "string") {
+    return NextResponse.json({ error: "`major` must be a string or null." }, { status: 400 });
   }
-  if (gradYear !== undefined && typeof gradYear !== "number") {
-    return NextResponse.json({ error: "`gradYear` must be a number." }, { status: 400 });
+  if (gradYear !== undefined && gradYear !== null && !isGradYear(gradYear)) {
+    return NextResponse.json({ error: "`gradYear` must be a four-digit year." }, { status: 400 });
   }
 
   const user = await prisma.user.update({
     where: { id: session.user.id },
-    data: { name, bio, major, gradYear },
-    select: SELF_FIELDS,
+    data: {
+      name: trimmed(name),
+      bio: trimmed(bio),
+      major: trimmed(major),
+      gradYear: gradYear as number | null | undefined,
+    },
+    select: { ...SELF_FIELDS, _count: INVOLVEMENT_COUNTS },
   });
-  return NextResponse.json(user);
+  return NextResponse.json(withInvolvement(user));
 }
