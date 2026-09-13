@@ -78,6 +78,7 @@ model Post {
   authorId  String
   body      String
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
 
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
@@ -88,7 +89,7 @@ model Event {
   description String?
   location    String?
   startsAt    DateTime
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @updatedAt
 
   rsvps       Rsvp[]
   attendances Attendance[]
@@ -124,9 +125,9 @@ model Attendance {
 }
 
 model Form {
-  id     String @id @default(cuid())
-  slug   String @unique
-  title  String
+  id    String @id @default(cuid())
+  slug  String @unique
+  title String
 
   fields      FormField[]
   submissions Submission[]

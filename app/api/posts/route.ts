@@ -21,6 +21,10 @@ export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
+  if (session.user.role !== "BOARD" && session.user.role !== "EXEC_BOARD") {
+    return NextResponse.json({ error: "Only board members can create posts." }, { status: 403 });
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
