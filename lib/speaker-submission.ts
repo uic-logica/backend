@@ -1,58 +1,120 @@
-export type ParsedSpeakerSubmission = {
-  name: string;
-  email: string;
-  organization: string | null;
-  referredBy: string;
-  availability: Date[];
-  needs: string | null;
-  publicOptIn: boolean;
+/** One "I'm free this stretch of days, during this stretch of time" block. */
+export type AvailabilityWindow = {
+  startDate: string; // "YYYY-MM-DD"
+  endDate: string; // "YYYY-MM-DD"
+  startTime: string; // "HH:MM"
+  endTime: string; // "HH:MM"
+};
+
+export type SpeakerFields = {
+  name?: string;
+  email?: string;
+  organization?: string;
+  referredBy?: string;
+  availability?: AvailabilityWindow[];
+  needs?: string;
+  publicOptIn?: boolean;
 };
 
 export type ParseResult =
-  | { ok: true; data: ParsedSpeakerSubmission }
+  | { ok: true; data: SpeakerFields }
   | { ok: false; error: string };
 
-/** Validates a raw speaker-intake POST body. Pure — no I/O, easy to test. */
-export function parseSpeakerSubmission(payload: unknown): ParseResult {
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}$/;
+
+function parseAvailability(value: unknown): { ok: true; windows: AvailabilityWindow[] } | { ok: false; error: string } {
+  if (!Array.isArray(value)) return { ok: false, error: "`availability` must be a list." };
+
+  const windows: AvailabilityWindow[] = [];
+  for (const raw of value) {
+    const { startDate, endDate, startTime, endTime } = (raw ?? {}) as Record<string, unknown>;
+    if (typeof startDate !== "string" || !DATE_RE.test(startDate)) {
+      return { ok: false, error: "Each availability window needs a valid `startDate` (YYYY-MM-DD)." };
+    }
+    if (typeof endDate !== "string" || !DATE_RE.test(endDate)) {
+      return { ok: false, error: "Each availability window needs a valid `endDate` (YYYY-MM-DD)." };
+    }
+    if (typeof startTime !== "string" || !TIME_RE.test(startTime)) {
+      return { ok: false, error: "Each availability window needs a valid `startTime` (HH:MM)." };
+    }
+    if (typeof endTime !== "string" || !TIME_RE.test(endTime)) {
+      return { ok: false, error: "Each availability window needs a valid `endTime` (HH:MM)." };
+    }
+    if (endDate < startDate) {
+      return { ok: false, error: "`endDate` can't be before `startDate`." };
+    }
+    windows.push({ startDate, endDate, startTime, endTime });
+  }
+  return { ok: true, windows };
+}
+
+/**
+ * Validates whatever subset of speaker fields is present in `payload`. Every
+ * field is optional here — requiredness (e.g. "name must end up set") is a
+ * caller concern, since a draft and a completed submission need different
+ * rules. Pure — no I/O, easy to test.
+ */
+export function parseSpeakerFields(payload: unknown): ParseResult {
   const { name, email, organization, referredBy, availability, needs, publicOptIn } =
     (payload ?? {}) as Record<string, unknown>;
 
-  if (typeof name !== "string" || name.trim().length === 0) {
-    return { ok: false, error: "`name` is required." };
-  }
-  if (typeof email !== "string" || !email.includes("@")) {
-    return { ok: false, error: "`email` must be a valid email address." };
-  }
-  if (organization !== undefined && typeof organization !== "string") {
-    return { ok: false, error: "`organization` must be a string." };
-  }
-  if (typeof referredBy !== "string" || referredBy.trim().length === 0) {
-    return { ok: false, error: "`referredBy` is required." };
-  }
-  if (!Array.isArray(availability) || availability.length === 0) {
-    return { ok: false, error: "`availability` must be a non-empty list of dates." };
-  }
-  const dates: Date[] = [];
-  for (const d of availability) {
-    if (typeof d !== "string" || Number.isNaN(Date.parse(d))) {
-      return { ok: false, error: "Each `availability` entry must be an ISO date string." };
+  const data: SpeakerFields = {};
+
+  if (name !== undefined) {
+    if (typeof name !== "string" || name.trim().length === 0) {
+      return { ok: false, error: "`name` must be a non-empty string." };
     }
-    dates.push(new Date(d));
+    data.name = name.trim();
   }
-  if (needs !== undefined && typeof needs !== "string") {
-    return { ok: false, error: "`needs` must be a string." };
+  if (email !== undefined) {
+    if (typeof email !== "string" || !email.includes("@")) {
+      return { ok: false, error: "`email` must be a valid email address." };
+    }
+    data.email = email.trim();
+  }
+  if (organization !== undefined) {
+    if (typeof organization !== "string") return { ok: false, error: "`organization` must be a string." };
+    data.organization = organization.trim();
+  }
+  if (referredBy !== undefined) {
+    if (typeof referredBy !== "string") return { ok: false, error: "`referredBy` must be a string." };
+    data.referredBy = referredBy.trim();
+  }
+  if (availability !== undefined) {
+    const parsed = parseAvailability(availability);
+    if (!parsed.ok) return parsed;
+    data.availability = parsed.windows;
+  }
+  if (needs !== undefined) {
+    if (typeof needs !== "string") return { ok: false, error: "`needs` must be a string." };
+    data.needs = needs.trim();
+  }
+  if (publicOptIn !== undefined) {
+    data.publicOptIn = publicOptIn === true;
   }
 
-  return {
-    ok: true,
-    data: {
-      name: name.trim(),
-      email: email.trim(),
-      organization: typeof organization === "string" ? organization.trim() : null,
-      referredBy: referredBy.trim(),
-      availability: dates,
-      needs: typeof needs === "string" ? needs.trim() : null,
-      publicOptIn: publicOptIn === true,
-    },
-  };
+  return { ok: true, data };
+}
+
+/** Cold submit (no pre-made draft) — the whole thing arrives in one shot, so `name` is required. */
+export function parseFreshSubmission(payload: unknown): ParseResult {
+  const parsed = parseSpeakerFields(payload);
+  if (!parsed.ok) return parsed;
+  if (!parsed.data.name) return { ok: false, error: "`name` is required." };
+  return parsed;
+}
+
+/**
+ * A speaker finishing a draft a board member started. `existingName` is
+ * whatever the draft already had — the payload only needs to supply a name
+ * if the draft didn't already have one.
+ */
+export function parseCompletion(payload: unknown, existingName: string | null): ParseResult {
+  const parsed = parseSpeakerFields(payload);
+  if (!parsed.ok) return parsed;
+  if (!parsed.data.name && !existingName) {
+    return { ok: false, error: "`name` is required." };
+  }
+  return parsed;
 }
