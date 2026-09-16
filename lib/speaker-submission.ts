@@ -13,7 +13,7 @@ export type SpeakerFields = {
   referredBy?: string;
   availability?: AvailabilityWindow[];
   needs?: string;
-  note?: string; // board-internal only
+  note?: string; // shared — either side can add context ("can't make Wednesday, works Thursday instead")
   publicOptIn?: boolean;
 };
 
@@ -102,30 +102,32 @@ export function parseSpeakerFields(payload: unknown): ParseResult {
   return { ok: true, data };
 }
 
-/** `note` is board-internal — never accepted from a public/unauthenticated caller. */
-function stripNote(data: SpeakerFields): SpeakerFields {
-  if (!("note" in data)) return data;
-  return Object.fromEntries(Object.entries(data).filter(([key]) => key !== "note")) as SpeakerFields;
-}
-
-/** Cold submit (no pre-made draft) — the whole thing arrives in one shot, so `name` is required. */
+/** Cold submit (no pre-made draft) — the whole thing arrives in one shot, so name + email are required. */
 export function parseFreshSubmission(payload: unknown): ParseResult {
   const parsed = parseSpeakerFields(payload);
   if (!parsed.ok) return parsed;
   if (!parsed.data.name) return { ok: false, error: "`name` is required." };
-  return { ok: true, data: stripNote(parsed.data) };
+  if (!parsed.data.email) return { ok: false, error: "`email` is required." };
+  return parsed;
 }
 
 /**
- * A speaker finishing a draft a board member started. `existingName` is
- * whatever the draft already had — the payload only needs to supply a name
- * if the draft didn't already have one.
+ * A speaker finishing a draft a board member started. `existingName` /
+ * `existingEmail` are whatever the draft already had — the payload only
+ * needs to supply what's still missing.
  */
-export function parseCompletion(payload: unknown, existingName: string | null): ParseResult {
+export function parseCompletion(
+  payload: unknown,
+  existingName: string | null,
+  existingEmail: string | null,
+): ParseResult {
   const parsed = parseSpeakerFields(payload);
   if (!parsed.ok) return parsed;
   if (!parsed.data.name && !existingName) {
     return { ok: false, error: "`name` is required." };
   }
-  return { ok: true, data: stripNote(parsed.data) };
+  if (!parsed.data.email && !existingEmail) {
+    return { ok: false, error: "`email` is required." };
+  }
+  return parsed;
 }

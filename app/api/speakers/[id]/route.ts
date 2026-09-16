@@ -5,29 +5,10 @@ import { prisma } from "@/lib/prisma";
 
 const STATUSES = ["PENDING", "CONFIRMED", "DECLINED"] as const;
 
-/**
- * Public, no auth — fetch a draft's current state to pre-fill the completion
- * form. `note` is board-internal and deliberately left out: anyone holding
- * this link can call this endpoint, not just board members.
- */
+/** Public, no auth — fetch a draft's current state to pre-fill the completion form. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const submission = await prisma.speakerSubmission.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      organization: true,
-      referredBy: true,
-      availability: true,
-      needs: true,
-      publicOptIn: true,
-      status: true,
-      submittedAt: true,
-      createdAt: true,
-    },
-  });
+  const submission = await prisma.speakerSubmission.findUnique({ where: { id } });
   if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
   return NextResponse.json(submission);
 }
