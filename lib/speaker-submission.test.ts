@@ -62,10 +62,10 @@ describe("parseSpeakerFields", () => {
     expect(parseSpeakerFields({ needs: 123 }).ok).toBe(false);
   });
 
-  it("accepts a note (board-only callers use this function directly)", () => {
-    const result = parseSpeakerFields({ note: "met at the career fair" });
+  it("accepts a note — shared field, either side can set it", () => {
+    const result = parseSpeakerFields({ note: "can't make Wednesday, Thursday works" });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data.note).toBe("met at the career fair");
+    if (result.ok) expect(result.data.note).toBe("can't make Wednesday, Thursday works");
   });
 });
 
@@ -75,37 +75,46 @@ describe("parseFreshSubmission", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("accepts a payload with a name and nothing else", () => {
+  it("requires an email", () => {
     const result = parseFreshSubmission({ name: "Ada" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts a payload with both name and email", () => {
+    const result = parseFreshSubmission({ name: "Ada", email: "ada@example.com" });
     expect(result.ok).toBe(true);
   });
 
-  it("strips note — a public submitter can't set the board-internal field", () => {
-    const result = parseFreshSubmission({ name: "Ada", note: "sneaky" });
+  it("keeps note — it's a shared field now, not board-only", () => {
+    const result = parseFreshSubmission({ name: "Ada", email: "ada@example.com", note: "hello" });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data.note).toBeUndefined();
+    if (result.ok) expect(result.data.note).toBe("hello");
   });
 });
 
 describe("parseCompletion", () => {
   it("rejects a payload with no name when the draft has none either", () => {
-    const result = parseCompletion({ needs: "Water" }, null);
+    const result = parseCompletion({ email: "ada@example.com" }, null, null);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a payload with no email when the draft has none either", () => {
+    const result = parseCompletion({ name: "Ada" }, null, null);
     expect(result.ok).toBe(false);
   });
 
   it("accepts a payload with no name when the draft already has one", () => {
-    const result = parseCompletion({ needs: "Water" }, "Ada Lovelace");
+    const result = parseCompletion({ email: "ada@example.com" }, "Ada Lovelace", null);
     expect(result.ok).toBe(true);
   });
 
-  it("accepts a payload that supplies its own name", () => {
-    const result = parseCompletion({ name: "Ada" }, null);
+  it("accepts a payload with no email when the draft already has one", () => {
+    const result = parseCompletion({ name: "Ada" }, null, "ada@example.com");
     expect(result.ok).toBe(true);
   });
 
-  it("strips note — the speaker can't set the board-internal field either", () => {
-    const result = parseCompletion({ needs: "Water", note: "sneaky" }, "Ada Lovelace");
+  it("accepts a payload that supplies its own name and email", () => {
+    const result = parseCompletion({ name: "Ada", email: "ada@example.com" }, null, null);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data.note).toBeUndefined();
   });
 });

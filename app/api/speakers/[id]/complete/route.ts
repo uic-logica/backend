@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const parsed = parseCompletion(payload, existing.name);
+  const parsed = parseCompletion(payload, existing.name, existing.email);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
