@@ -203,3 +203,25 @@ model MembershipApplication {
 
   @@index([email])
 }
+
+enum SpeakerStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+}
+
+// logica-lean: bare-minimum shape for the speaker/guest intake addition
+// (frontend#36, this repo's issue). No email-on-confirm, no calendar sync —
+// whoever needs those picks it up as a follow-up.
+model SpeakerSubmission {
+  id           String        @id @default(cuid())
+  name         String
+  email        String
+  organization String?
+  referredBy   String // e.g. "Nicolas", "Diego", or free text — not an enum, board members change
+  availability DateTime[] // days/dates they said they're free
+  needs        String? // freeform: AV equipment, snacks, room setup, etc.
+  publicOptIn  Boolean       @default(false)
+  status       SpeakerStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+}
