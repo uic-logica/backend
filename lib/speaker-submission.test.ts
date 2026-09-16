@@ -61,6 +61,12 @@ describe("parseSpeakerFields", () => {
   it("rejects a non-string needs", () => {
     expect(parseSpeakerFields({ needs: 123 }).ok).toBe(false);
   });
+
+  it("accepts a note (board-only callers use this function directly)", () => {
+    const result = parseSpeakerFields({ note: "met at the career fair" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.note).toBe("met at the career fair");
+  });
 });
 
 describe("parseFreshSubmission", () => {
@@ -72,6 +78,12 @@ describe("parseFreshSubmission", () => {
   it("accepts a payload with a name and nothing else", () => {
     const result = parseFreshSubmission({ name: "Ada" });
     expect(result.ok).toBe(true);
+  });
+
+  it("strips note — a public submitter can't set the board-internal field", () => {
+    const result = parseFreshSubmission({ name: "Ada", note: "sneaky" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.note).toBeUndefined();
   });
 });
 
@@ -89,5 +101,11 @@ describe("parseCompletion", () => {
   it("accepts a payload that supplies its own name", () => {
     const result = parseCompletion({ name: "Ada" }, null);
     expect(result.ok).toBe(true);
+  });
+
+  it("strips note — the speaker can't set the board-internal field either", () => {
+    const result = parseCompletion({ needs: "Water", note: "sneaky" }, "Ada Lovelace");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.note).toBeUndefined();
   });
 });

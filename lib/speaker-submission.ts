@@ -13,6 +13,7 @@ export type SpeakerFields = {
   referredBy?: string;
   availability?: AvailabilityWindow[];
   needs?: string;
+  note?: string; // board-internal only
   publicOptIn?: boolean;
 };
 
@@ -56,7 +57,7 @@ function parseAvailability(value: unknown): { ok: true; windows: AvailabilityWin
  * rules. Pure — no I/O, easy to test.
  */
 export function parseSpeakerFields(payload: unknown): ParseResult {
-  const { name, email, organization, referredBy, availability, needs, publicOptIn } =
+  const { name, email, organization, referredBy, availability, needs, note, publicOptIn } =
     (payload ?? {}) as Record<string, unknown>;
 
   const data: SpeakerFields = {};
@@ -90,6 +91,10 @@ export function parseSpeakerFields(payload: unknown): ParseResult {
     if (typeof needs !== "string") return { ok: false, error: "`needs` must be a string." };
     data.needs = needs.trim();
   }
+  if (note !== undefined) {
+    if (typeof note !== "string") return { ok: false, error: "`note` must be a string." };
+    data.note = note.trim();
+  }
   if (publicOptIn !== undefined) {
     data.publicOptIn = publicOptIn === true;
   }
@@ -97,12 +102,18 @@ export function parseSpeakerFields(payload: unknown): ParseResult {
   return { ok: true, data };
 }
 
+/** `note` is board-internal — never accepted from a public/unauthenticated caller. */
+function stripNote(data: SpeakerFields): SpeakerFields {
+  if (!("note" in data)) return data;
+  return Object.fromEntries(Object.entries(data).filter(([key]) => key !== "note")) as SpeakerFields;
+}
+
 /** Cold submit (no pre-made draft) — the whole thing arrives in one shot, so `name` is required. */
 export function parseFreshSubmission(payload: unknown): ParseResult {
   const parsed = parseSpeakerFields(payload);
   if (!parsed.ok) return parsed;
   if (!parsed.data.name) return { ok: false, error: "`name` is required." };
-  return parsed;
+  return { ok: true, data: stripNote(parsed.data) };
 }
 
 /**
@@ -116,5 +127,5 @@ export function parseCompletion(payload: unknown, existingName: string | null): 
   if (!parsed.data.name && !existingName) {
     return { ok: false, error: "`name` is required." };
   }
-  return parsed;
+  return { ok: true, data: stripNote(parsed.data) };
 }

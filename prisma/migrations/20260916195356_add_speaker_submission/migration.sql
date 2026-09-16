@@ -10,6 +10,7 @@ CREATE TABLE "SpeakerSubmission" (
     "referredBy" TEXT,
     "availability" JSONB,
     "needs" TEXT,
+    "note" TEXT,
     "publicOptIn" BOOLEAN NOT NULL DEFAULT false,
     "status" "SpeakerStatus" NOT NULL DEFAULT 'PENDING',
     "submittedAt" TIMESTAMP(3),
