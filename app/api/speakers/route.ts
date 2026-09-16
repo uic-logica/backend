@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { hasRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { overAttemptLimit } from "@/lib/rate-limit";
-import { parseSpeakerSubmission } from "@/lib/speaker-submission";
+import { parseFreshSubmission } from "@/lib/speaker-submission";
 
 // logica-lean: bare-minimum speaker/guest intake (frontend#36). No email
 // receipt on submit, no admin notification — whoever needs those picks it
@@ -13,7 +13,7 @@ function clientKey(request: NextRequest): string {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }
 
-/** Board+ only — the full submission list, including contact info. */
+/** Board+ only — the full submission list, including contact info and draft status. */
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
@@ -25,7 +25,7 @@ export async function GET() {
   return NextResponse.json(submissions);
 }
 
-/** Public, no auth — anyone with the link can submit. Rate-limited per IP. */
+/** Public, no auth — a stranger filling out the form cold, start to finish. Rate-limited per IP. */
 export async function POST(request: NextRequest) {
   if (overAttemptLimit(`speaker-submit:${clientKey(request)}`, 5, 60 * 60 * 1000)) {
     return NextResponse.json({ error: "Too many submissions. Try again later." }, { status: 429 });
@@ -38,11 +38,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const parsed = parseSpeakerSubmission(payload);
+  const parsed = parseFreshSubmission(payload);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const submission = await prisma.speakerSubmission.create({ data: parsed.data });
+  const submission = await prisma.speakerSubmission.create({
+    data: { ...parsed.data, submittedAt: new Date() },
+  });
   return NextResponse.json({ id: submission.id }, { status: 201 });
 }

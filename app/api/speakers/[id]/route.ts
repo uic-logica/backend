@@ -5,6 +5,14 @@ import { prisma } from "@/lib/prisma";
 
 const STATUSES = ["PENDING", "CONFIRMED", "DECLINED"] as const;
 
+/** Public, no auth — fetch a draft's current state to pre-fill the completion form. */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const submission = await prisma.speakerSubmission.findUnique({ where: { id } });
+  if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  return NextResponse.json(submission);
+}
+
 /** Board+ only — confirm or decline a speaker submission. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
