@@ -28,7 +28,8 @@ model User {
   sessions    Session[]
   posts       Post[]
   rsvps       Rsvp[]
-  attendances Attendance[]
+  attendances Attendance[] @relation("Attended")
+  checkIns    Attendance[] @relation("CheckedInBy")
   submissions Submission[]
 }
 
@@ -92,6 +93,7 @@ model Event {
 
   rsvps       Rsvp[]
   attendances Attendance[]
+  checkInCode CheckInCode?
 }
 
 enum RsvpStatus {
@@ -112,15 +114,27 @@ model Rsvp {
 }
 
 model Attendance {
-  id          String   @id @default(cuid())
-  eventId     String
-  userId      String
-  checkedInAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  eventId       String
+  userId        String
+  checkedInAt   DateTime @default(now())
+  checkedInById String? // board member who checked them in at the door; null if they used the event code
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event       Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user        User  @relation("Attended", fields: [userId], references: [id], onDelete: Cascade)
+  checkedInBy User? @relation("CheckedInBy", fields: [checkedInById], references: [id], onDelete: SetNull)
 
   @@unique([eventId, userId])
+}
+
+// The code members enter (or scan as a QR) to check in to an event (#5).
+// Separate from Event so opening check-in doesn't touch the event record.
+model CheckInCode {
+  eventId   String   @id
+  code      String
+  expiresAt DateTime
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 }
 
 model Form {
