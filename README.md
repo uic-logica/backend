@@ -13,7 +13,7 @@ Headless Next.js API (App Router route handlers only, no pages). Auth, roles, an
 1. `npm install`
 2. Copy `.env.example` to `.env.local`, fill in `DATABASE_URL` (a free Supabase Postgres works fine for dev), generate `AUTH_SECRET` (`npx auth secret`), and fill in the SMTP vars (`EMAIL_SERVER_HOST`/`PORT`/`USER`/`PASSWORD`, `EMAIL_FROM`) used to send the one-time sign-in code — see Step 2 in [ROADMAP.md](https://github.com/uic-logica/.github/blob/main/ROADMAP.md). For local dev, generate a throwaway [Ethereal](https://ethereal.email) mailbox rather than wiring up a real inbox — see the comments in `.env.example`. Real sending goes through a dedicated `logica.noreply@gmail.com` account (ask a maintainer for the App Password); it's a stopgap until the club has its own domain, which the public website needs anyway, and switching is an `.env` change rather than a code change.
 3. `npx prisma migrate dev --name init`
-4. `npm run dev`
+4. `npm run dev` — serves on port 3001, which is where the `frontend` repo expects it (it runs on 3000 and proxies `/api/*` here).
 
 ## Where things are
 
