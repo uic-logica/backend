@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { handlers } from "@/auth";
-import { isAllowedEmail, OTP_MAX_AGE_SECONDS } from "@/lib/otp";
-import { clearAttempts, overAttemptLimit } from "@/lib/rate-limit";
+import { isAllowedEmail } from "@/lib/otp";
+import { outOfGuesses } from "@/lib/sign-in-limit";
 
 /**
  * Exchanges an emailed sign-in code for a session cookie.
@@ -17,11 +17,9 @@ import { clearAttempts, overAttemptLimit } from "@/lib/rate-limit";
  * The verification itself is still Auth.js's — this builds the callback request
  * and forwards its `Set-Cookie` untouched, so single-use tokens, expiry, the
  * `signIn` callback, and session creation all keep behaving exactly as they do
- * for a clicked link. Nothing here re-implements token checking.
+ * for a clicked link. Nothing here re-implements token checking. Guess limits
+ * live in the adapter (lib/sign-in-limit.ts), so they apply to both routes.
  */
-
-/** Wrong guesses allowed per address before the rest of the window is refused. */
-const MAX_ATTEMPTS = 5;
 
 const OTP_PATTERN = /^\d{6}$/;
 
@@ -45,16 +43,9 @@ export async function POST(request: NextRequest) {
   const identifier = email.trim().toLowerCase();
 
   // Same rule the signIn callback enforces; checked here so a wrong-domain
-  // address never reaches the redemption path or burns an attempt slot.
+  // address never reaches the redemption path or spends a guess.
   if (!isAllowedEmail(identifier) || !OTP_PATTERN.test(code)) {
     return NextResponse.json({ error: "That code isn't valid." }, { status: 401 });
-  }
-
-  if (overAttemptLimit(identifier, MAX_ATTEMPTS, OTP_MAX_AGE_SECONDS * 1000)) {
-    return NextResponse.json(
-      { error: "Too many attempts. Request a new code." },
-      { status: 429 },
-    );
   }
 
   const callback = new URL("/api/auth/callback/nodemailer", request.nextUrl.origin);
@@ -74,13 +65,17 @@ export async function POST(request: NextRequest) {
   );
 
   if (!signedIn) {
+    if (await outOfGuesses(identifier)) {
+      return NextResponse.json(
+        { error: "Too many attempts. Request a new code." },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
       { error: "That code isn't valid or has expired." },
       { status: 401 },
     );
   }
-
-  clearAttempts(identifier);
 
   const response = NextResponse.json({ ok: true });
   for (const cookie of cookies) response.headers.append("set-cookie", cookie);
