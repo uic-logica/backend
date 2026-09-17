@@ -2,16 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { hasRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
-import { overAttemptLimit } from "@/lib/rate-limit";
+import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
 import { parseFreshSubmission } from "@/lib/speaker-submission";
 
 // logica-lean: bare-minimum speaker/guest intake (frontend#36). No email
 // receipt on submit, no admin notification — whoever needs those picks it
 // up as a follow-up.
-
-function clientKey(request: NextRequest): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-}
 
 /** Board+ only — the full submission list, including contact info and draft status. */
 export async function GET() {
