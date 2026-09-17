@@ -3,10 +3,8 @@
  *
  * logica-lean: the counter lives in one server process's memory — it resets on
  * redeploy, and a multi-instance deploy multiplies the effective ceiling by the
- * number of instances. It also cannot reach Auth.js's own
- * `/api/auth/callback/nodemailer` route, which accepts the same code with no
- * limit at all. Revisit when we run more than one instance, or when sign-in
- * needs real protection: that needs a store shared across instances. See #14.
+ * number of instances. Revisit when we run more than one instance. Sign-in
+ * codes don't use this; they're limited in Postgres (lib/sign-in-limit.ts).
  */
 const windows = new Map<string, { count: number; resetAt: number }>();
 

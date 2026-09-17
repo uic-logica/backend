@@ -4,6 +4,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { createTransport } from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import { OTP_MAX_AGE_SECONDS, generateOtp, isAllowedEmail, otpEmail } from "@/lib/otp";
+import { allowCodeRequest, withGuessLimit } from "@/lib/sign-in-limit";
 
 // `|| 587` (not `??`) so an empty EMAIL_SERVER_PORT="" falls back too.
 const port = Number(process.env.EMAIL_SERVER_PORT) || 587;
@@ -23,7 +24,7 @@ const smtp = {
 // posts it back to /api/auth/callback/nodemailer?token=<code>&email=<email>.
 // Sign-in is restricted to ALLOWED_EMAIL_DOMAIN and fails closed if it is unset.
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: withGuessLimit(PrismaAdapter(prisma)),
   providers: [
     Nodemailer({
       server: smtp,
@@ -64,8 +65,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     // Runs twice per sign-in: once before the code is emailed, once when it is
     // redeemed. Both must pass, so a non-.edu address never receives a code.
-    async signIn({ user }) {
-      return isAllowedEmail(user.email);
+    // The first call also counts the code request against the address (#14).
+    async signIn({ user, email }) {
+      if (!isAllowedEmail(user.email)) return false;
+      if (email?.verificationRequest) return allowCodeRequest(user.email!);
+      return true;
     },
     // Build the response explicitly instead of returning `session`.
     //

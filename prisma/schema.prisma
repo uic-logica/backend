@@ -151,3 +151,12 @@ model Submission {
   form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// Sign-in throttling per email address (#14). Kept in Postgres rather than
+// memory so the limits survive restarts and hold across instances.
+model SignInLimit {
+  identifier   String   @id
+  guesses      Int      @default(0) // code guesses since the last code was issued
+  codeRequests Int      @default(0) // codes issued in the current window
+  windowEndsAt DateTime
+}
