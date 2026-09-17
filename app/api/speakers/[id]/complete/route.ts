@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { overAttemptLimit } from "@/lib/rate-limit";
+import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
 import { parseCompletion } from "@/lib/speaker-submission";
-
-function clientKey(request: NextRequest): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-}
 
 /**
  * Public, no auth — the speaker finishing a draft a board member started.

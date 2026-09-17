@@ -228,7 +228,7 @@ model SpeakerSubmission {
   referredBy   String? // e.g. "Nicolas", "Diego", or free text — not an enum, board members change
   availability Json? // array of {startDate, endDate, startTime, endTime} windows — see lib/speaker-submission.ts
   needs        String? // freeform: AV equipment, snacks, room setup, etc.
-  note         String? // board-internal only — never returned to the speaker's own link
+  note         String? // shared — either side can add context (e.g. "can't make Wednesday")
   publicOptIn  Boolean       @default(false)
   status       SpeakerStatus @default(PENDING)
   submittedAt  DateTime? // null = draft, still waiting on the speaker

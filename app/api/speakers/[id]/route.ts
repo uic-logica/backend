@@ -5,12 +5,45 @@ import { prisma } from "@/lib/prisma";
 
 const STATUSES = ["PENDING", "CONFIRMED", "DECLINED"] as const;
 
-/** Public, no auth — fetch a draft's current state to pre-fill the completion form. */
+/**
+ * Public, no auth — fetch a draft's current state to pre-fill the completion
+ * form. Scoped to only what the form needs (no `status`/`createdAt`), and
+ * stops serving the row entirely once it's been submitted — there's no
+ * ongoing reason for a link to keep exposing contact info forever.
+ */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const submission = await prisma.speakerSubmission.findUnique({ where: { id } });
+  const submission = await prisma.speakerSubmission.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      organization: true,
+      referredBy: true,
+      availability: true,
+      needs: true,
+      note: true,
+      publicOptIn: true,
+      submittedAt: true,
+    },
+  });
   if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  return NextResponse.json(submission);
+  if (submission.submittedAt) {
+    return NextResponse.json({ error: "This has already been submitted." }, { status: 410 });
+  }
+
+  return NextResponse.json({
+    id: submission.id,
+    name: submission.name,
+    email: submission.email,
+    organization: submission.organization,
+    referredBy: submission.referredBy,
+    availability: submission.availability,
+    needs: submission.needs,
+    note: submission.note,
+    publicOptIn: submission.publicOptIn,
+  });
 }
 
 /** Board+ only — confirm or decline a speaker submission. */
