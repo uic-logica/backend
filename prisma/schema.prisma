@@ -39,18 +39,25 @@ model User {
   passwordHash        String? // scrypt, see lib/password.ts — never set for MEMBER accounts
   mustChangePassword  Boolean     @default(false)
   linkedin            String?
-  resumeUrl           String?
+  // Resume — any signed-in user (MEMBER or SPEAKER) can attach one via
+  // /api/profile/resume. ponytail: stored as bytes in Postgres, not object
+  // storage — fine at this scale (a handful of small PDFs); move to Vercel
+  // Blob/S3 if resumes get large or numerous.
+  resumeData          Bytes?
+  resumeFilename      String?
+  resumeMimeType      String?
   speakerSubmissionId String?     @unique
   speakerSubmission   SpeakerSubmission? @relation(fields: [speakerSubmissionId], references: [id])
 
-  accounts        Account[]
-  sessions        Session[]
-  posts           Post[]
-  rsvps           Rsvp[]
-  attendances     Attendance[]
-  submissions     Submission[]
-  notifications   Notification[]
-  emailPreference EmailPreference?
+  accounts          Account[]
+  sessions          Session[]
+  posts             Post[]
+  rsvps             Rsvp[]
+  attendances       Attendance[]
+  submissions       Submission[]
+  notifications     Notification[]
+  emailPreference   EmailPreference?
+  uploadedMaterials EventMaterial[]
 }
 
 // Required by @auth/prisma-adapter — do not rename fields.
@@ -99,8 +106,31 @@ model Post {
   authorId  String
   body      String
   createdAt DateTime @default(now())
+  eventId   String? // set -> this post is on that event's feed, not the general feed
 
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  event  Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+enum MaterialVisibility {
+  PUBLIC // shown to anyone viewing the event, signed in or not
+  INTERNAL // board+ only — marketing assets, internal notes, etc.
+}
+
+// Organizer-uploaded slides/notes for an event. ponytail: same
+// bytes-in-Postgres approach as User.resumeData, same ceiling/upgrade note.
+model EventMaterial {
+  id           String             @id @default(cuid())
+  eventId      String
+  uploadedById String
+  filename     String
+  mimeType     String
+  data         Bytes
+  visibility   MaterialVisibility @default(INTERNAL)
+  createdAt    DateTime           @default(now())
+
+  event      Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  uploadedBy User  @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 }
 
 model Event {
@@ -113,6 +143,8 @@ model Event {
 
   rsvps       Rsvp[]
   attendances Attendance[]
+  posts       Post[]
+  materials   EventMaterial[]
 }
 
 enum RsvpStatus {

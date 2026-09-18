@@ -10,7 +10,7 @@ const SELF_FIELDS = {
   username: true,
   linkedin: true,
   bio: true,
-  resumeUrl: true,
+  resumeFilename: true, // upload/remove via /api/profile/resume, same as MEMBER accounts
   mustChangePassword: true,
   speakerSubmission: {
     select: { organization: true, availability: true, needs: true, note: true },
