@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { hasRole } from "@/lib/authz";
+import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
 const STATUSES = ["PENDING", "CONFIRMED", "DECLINED"] as const;
@@ -50,7 +51,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!hasRole(session.user.role, "BOARD")) {
+  if (session.user.accountKind !== "MEMBER" || !hasRole(session.user.role, "BOARD")) {
     return NextResponse.json({ error: "Only board members can update speaker submissions." }, { status: 403 });
   }
 
@@ -73,6 +74,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const updated = await prisma.speakerSubmission.update({
     where: { id },
     data: { status: status as (typeof STATUSES)[number] },
+    include: { user: { select: { id: true } } }, // id only — never leak passwordHash etc. through this response
   });
+
+  if (updated.user && (status === "CONFIRMED" || status === "DECLINED")) {
+    const message =
+      status === "CONFIRMED"
+        ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
+        : "Your speaker submission to LOGICA @ UIC was declined.";
+    await notifyUser(updated.user.id, message, "announcements");
+  }
+
   return NextResponse.json(updated);
 }
