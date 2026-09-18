@@ -3,7 +3,17 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { INVOLVEMENT_COUNTS, withInvolvement } from "@/lib/involvement";
 
-const SELF_FIELDS = { id: true, name: true, email: true, image: true, role: true, bio: true, major: true, gradYear: true } as const;
+const SELF_FIELDS = {
+  id: true,
+  name: true,
+  email: true,
+  image: true,
+  role: true,
+  bio: true,
+  major: true,
+  gradYear: true,
+  resumeFilename: true, // read-only here — uploaded via /api/profile/resume
+} as const;
 
 function isGradYear(value: unknown): boolean {
   return typeof value === "number" && Number.isInteger(value) && value >= 1900 && value <= 2100;
