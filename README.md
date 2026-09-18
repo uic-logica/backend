@@ -24,6 +24,7 @@ Headless Next.js API (App Router route handlers only, no pages). Auth, roles, an
 - `lib/sign-in-limit.ts` — sign-in limits, stored in Postgres: 5 codes per address per hour, 5 guesses per code. Applies to both the verify endpoint and Auth.js's callback.
 - `lib/prisma.ts` — shared Prisma client, import this everywhere instead of `new PrismaClient()`.
 - `app/api/profile`, `/posts`, `/events`, `/attendance`, `/forms` + their `Post`/`Event`/`Rsvp`/`Attendance`/`Form` models — **bare-minimum, throwaway scaffolding** for Steps 3–7 (`logica-lean`-marked throughout, see each roadmap issue's comments for specifics). A rough starting reference, not a finished implementation — attendance in particular has no real check-in verification yet.
+- `app/api/join` — membership applications from the `/join` page: public `POST`, board-only `GET` and `PATCH /:id` to set the status.
 - `prisma/seed.ts` — throwaway local dev sample data matching the scaffolding above. Not wired into CI or `prisma migrate`; run with `npx tsx prisma/seed.ts`.
 
 ## Workflow
