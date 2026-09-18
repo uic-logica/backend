@@ -6,10 +6,8 @@ import { prisma } from "@/lib/prisma";
 // shareable/embed link yet (that's `GET /api/events/[id]`, still just the
 // raw record) — real ticket designs those.
 
+/** Public, no auth — events are marketing content, not member-only. */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-
   const events = await prisma.event.findMany({ orderBy: { startsAt: "asc" }, take: 50 });
   return NextResponse.json(events);
 }

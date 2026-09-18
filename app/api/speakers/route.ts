@@ -9,15 +9,23 @@ import { parseFreshSubmission } from "@/lib/speaker-submission";
 // receipt on submit, no admin notification — whoever needs those picks it
 // up as a follow-up.
 
-/** Board+ only — the full submission list, including contact info and draft status. */
+/**
+ * Board+ only — the full submission list, including contact info, draft
+ * status, and (if invited) the linked portal account's username/LinkedIn/
+ * resume — this is what the admin directory (frontend `/admin/speakers`)
+ * reads.
+ */
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!hasRole(session.user.role, "BOARD")) {
+  if (session.user.accountKind !== "MEMBER" || !hasRole(session.user.role, "BOARD")) {
     return NextResponse.json({ error: "Only board members can view speaker submissions." }, { status: 403 });
   }
 
-  const submissions = await prisma.speakerSubmission.findMany({ orderBy: { createdAt: "desc" } });
+  const submissions = await prisma.speakerSubmission.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { user: { select: { id: true, username: true, linkedin: true, resumeFilename: true } } },
+  });
   return NextResponse.json(submissions);
 }
 

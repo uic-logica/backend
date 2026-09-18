@@ -70,9 +70,15 @@ ponytail: Postgres, not object storage — fine at the current scale (a handful 
 
 `Post` gained a nullable `eventId` — a post with one set is that event's feed instead of the general one. Same model, same shape, `GET/POST /api/events/:id/feed` mirror the general `/api/posts` routes. No separate model, no new permissions: same "any signed-in user" rule as the general feed.
 
+## Public events + scheduled reminders + the admin directory
+
+Three more pieces, same pass:
+
+- **`GET /api/events` and `GET /api/events/:id` are public now** — no auth required. They were board-gated before, which meant `/events` (a public marketing page) 401'd for every signed-out visitor. Events have no sensitive fields (title/description/location/time), so there was no reason for the gate. `POST /api/events` (create) is still board+ only.
+- **`GET /api/speakers` includes the linked portal account** (`user: { id, username, linkedin, resumeFilename }`) when one exists — this is what the admin speaker directory reads to show LinkedIn/resume alongside each submission.
+- **Scheduled reminders**: `app/api/cron/event-reminders` + `vercel.json`. Vercel Cron hits it daily; it reminds everyone `RSVP`'d `GOING` to anything starting in the next 24h, once per event (`Event.remindedAt`). Protected by `CRON_SECRET` (set on Vercel; unset locally skips the check — see `.env.example`). ponytail: daily cron + 24h window means "reminded sometime the day before," not an exact offset — tighten later if that precision matters. No new infra: Vercel Cron is a native platform feature, not a new dependency.
+
 ## What still needs building
 
-- **Frontend** for all of the above — self-service profile page, resume upload UI, event feed UI, materials upload/download UI, notification inbox. All of it is API-only right now (same situation the original speaker-portal work landed in).
-- **Exec-board speaker directory** — `GET /api/speakers` (board-only, full list) has existed since the intake system, but there's still no admin UI to browse it, see LinkedIn/resumes, or trigger `/invite`. Predates this work too.
-- **Scheduled reminders** ("event starts tomorrow") — needs a cron/job runner, which nothing in this stack has yet. `notifyEventGoing` is ready for it whenever that infra exists.
-- **Per-event public pages** (browse/RSVP without signing in) — a different feature, already tracked as roadmap Step 5 (`frontend`#4, `backend`#4). Event materials' `PUBLIC` visibility is readable by signed-out visitors today, but there's no page that shows them yet.
+- **Frontend for the admin directory** — `GET /api/speakers` now returns everything the page needs (contact info, status, LinkedIn, resume, draft state), but there's no `/admin/speakers`-style page yet to browse/confirm/decline/invite from.
+- Everything else already listed above (resume/materials/feed UI) is now built — see the frontend PRs.
