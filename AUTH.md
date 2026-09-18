@@ -43,12 +43,36 @@ Because the Session row and cookie are shaped identically to what the adapter it
 
 `lib/password.ts`, built on Node's built-in `crypto.scrypt` — no bcrypt/argon2 dependency. Stored as `scrypt:<salt-hex>:<hash-hex>`, timing-safe compare on verify. Temp passwords are 12 characters of `crypto.randomBytes`, base64url-encoded.
 
+## Notifications + email routing
+
+`lib/notify.ts` is the one place anything "tell a user something" goes through:
+
+- `notifyUser(userId, message, category)` — writes the in-app `Notification`, then emails the same message unless that `EmailPreference` category is off (`eventReminders` or `announcements`; missing preference row = on, matching the GET default).
+- `notifyEventGoing(eventId, message, category, exceptUserId?)` — same, fanned out to everyone `RSVP`'d `GOING` to that event.
+
+Wired into three trigger points so far:
+1. `PATCH /api/speakers/:id` confirming/declining a submission → `notifyUser` (category `announcements`) if that submission has a linked portal account.
+2. `POST /api/events/:id/feed` (a note posted to an event) → `notifyEventGoing` (category `eventReminders`), excluding the poster.
+3. `POST /api/events/:id/materials` with `visibility: "PUBLIC"` → `notifyEventGoing` (category `eventReminders`).
+
+ponytail: fire-and-forget, no retry queue — a failed email is logged (`console.error`) and the in-app notification stays either way. No automatic reminders (e.g. "event tomorrow") — that needs a scheduled job, and nothing in this stack runs one yet; add a cron trigger calling `notifyEventGoing` when that's actually needed, don't build the scheduler speculatively.
+
+## File uploads: resumes and event materials
+
+Both stored as `Bytes` columns directly in Postgres via `lib/upload.ts`'s `parseUpload()` — a shared `{ filename, mimeType, data: <base64> }` JSON shape, not multipart/form-data (every other endpoint in this app is already JSON; a form-data parser for one feature isn't worth it). Size-capped (resumes 5MB, event materials 15MB) since they land in the database.
+
+- **Resumes** — any signed-in user, `POST/DELETE /api/profile/resume`, downloaded via `GET /api/resume/:userId` (self, or board+ reviewing who's signed up). One resume per user, referenced through their RSVPs — not stored per-event, since a person's resume doesn't change per event they attend.
+- **Event materials** — board+ only to upload (`POST /api/events/:id/materials`), with a `visibility: "PUBLIC" | "INTERNAL"` field. `GET /api/events/:id/materials` filters to `PUBLIC` for anyone who isn't board (including signed-out requests — public materials are meant to be public); `GET /api/materials/:id/download` enforces the same split.
+
+ponytail: Postgres, not object storage — fine at the current scale (a handful of small PDFs/slide decks). Move to Vercel Blob or S3 if files get large or numerous; nothing else in the stack currently handles file uploads at all, so this was the smallest thing that could actually ship rather than a placeholder waiting on new infra.
+
+## Event feed
+
+`Post` gained a nullable `eventId` — a post with one set is that event's feed instead of the general one. Same model, same shape, `GET/POST /api/events/:id/feed` mirror the general `/api/posts` routes. No separate model, no new permissions: same "any signed-in user" rule as the general feed.
+
 ## What still needs building
 
-This ships the auth foundation only. Not yet built (all discussed, none started):
-- **Speaker self-service profile** — `GET/PATCH /api/speaker-profile` exists (name, LinkedIn, bio, plus the linked submission's organization/availability/needs/note), but there's no frontend page for it yet.
-- **Exec-board speaker directory** — `GET /api/speakers` (board-only, full list) has existed since the intake system, but there's still no admin UI to browse it, see LinkedIn/resumes, or trigger `/invite`. This was already a gap before the portal idea.
-- **Resume upload** — `User.resumeUrl` exists as a column; nothing writes to it yet. Needs blob storage (Vercel Blob is the natural pick, nothing else in the stack handles file uploads).
-- **Notifications** — `Notification` model + `GET /api/notifications` + `PATCH /api/notifications/:id` (mark read) exist; nothing creates a notification yet, and there's no frontend inbox UI.
-- **Email preferences** — `EmailPreference` model + `GET/PATCH /api/email-preferences` exist (two categories: `eventReminders`, `announcements`); nothing checks them before sending mail yet, because nothing sends notification mail yet.
-- **Per-event public pages** (browse/RSVP without signing in) — this is a different feature, already tracked as roadmap Step 5 (`frontend`#4, `backend`#4), not part of the speaker-portal work. Don't rebuild it here.
+- **Frontend** for all of the above — self-service profile page, resume upload UI, event feed UI, materials upload/download UI, notification inbox. All of it is API-only right now (same situation the original speaker-portal work landed in).
+- **Exec-board speaker directory** — `GET /api/speakers` (board-only, full list) has existed since the intake system, but there's still no admin UI to browse it, see LinkedIn/resumes, or trigger `/invite`. Predates this work too.
+- **Scheduled reminders** ("event starts tomorrow") — needs a cron/job runner, which nothing in this stack has yet. `notifyEventGoing` is ready for it whenever that infra exists.
+- **Per-event public pages** (browse/RSVP without signing in) — a different feature, already tracked as roadmap Step 5 (`frontend`#4, `backend`#4). Event materials' `PUBLIC` visibility is readable by signed-out visitors today, but there's no page that shows them yet.
