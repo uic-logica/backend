@@ -3,7 +3,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
 // logica-lean: bare-minimum Post CRUD for #7 (BE 4). No pagination, no
-// edit/delete, no likes/comments — real ticket designs those.
+// likes/comments — real ticket designs those. Edit/delete for a single post
+// live in app/api/posts/[id]/route.ts.
 
 export async function GET() {
   const session = await auth();
@@ -42,15 +43,4 @@ export async function POST(request: NextRequest) {
     include: { author: { select: { id: true, name: true, role: true } } },
   });
   return NextResponse.json(post, { status: 201 });
-}
-
-export async function PATCH(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-
-  if (session.user.role !== "BOARD" && session.user.role !== "EXEC_BOARD") {
-    return NextResponse.json({ error: "Only board members can create posts." }, { status: 403 });
-  }
-
-
 }

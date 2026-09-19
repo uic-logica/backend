@@ -78,7 +78,7 @@ model Post {
   authorId  String
   body      String
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
@@ -89,7 +89,7 @@ model Event {
   description String?
   location    String?
   startsAt    DateTime
-  createdAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
 
   rsvps       Rsvp[]
   attendances Attendance[]
