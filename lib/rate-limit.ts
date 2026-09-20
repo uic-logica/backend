@@ -41,3 +41,16 @@ function sweep(now: number): void {
     if (window.resetAt <= now) windows.delete(key);
   }
 }
+
+/**
+ * Best-effort per-client key for `overAttemptLimit`.
+ *
+ * logica-lean: trusts `x-forwarded-for` as-is. Safe on Vercel — the platform
+ * sets this header itself at the edge, a client can't override it — but a
+ * client-controlled value behind a different proxy setup, and everyone
+ * without the header sharing one "unknown" bucket. Revisit if this ever
+ * runs somewhere other than Vercel.
+ */
+export function clientKey(request: { headers: { get(name: string): string | null } }): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+}

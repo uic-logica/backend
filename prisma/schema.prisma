@@ -203,3 +203,34 @@ model MembershipApplication {
 
   @@index([email])
 }
+
+enum SpeakerStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+}
+
+// logica-lean: bare-minimum shape for the speaker/guest intake addition
+// (frontend#36, this repo's issue). No email-on-confirm, no calendar sync —
+// whoever needs those picks it up as a follow-up.
+//
+// Two ways a row gets created:
+// - Cold: a stranger fills out the public form start to finish. `submittedAt`
+//   is set immediately.
+// - Draft: a board member pre-fills whatever they already know (POST
+//   /drafts) and sends the speaker `id` as a private link. `submittedAt` is
+//   null until the speaker fills in the rest via POST /:id/complete.
+model SpeakerSubmission {
+  id           String        @id @default(cuid())
+  name         String?
+  email        String?
+  organization String?
+  referredBy   String? // e.g. "Nicolas", "Diego", or free text — not an enum, board members change
+  availability Json? // array of {startDate, endDate, startTime, endTime} windows — see lib/speaker-submission.ts
+  needs        String? // freeform: AV equipment, snacks, room setup, etc.
+  note         String? // shared — either side can add context (e.g. "can't make Wednesday")
+  publicOptIn  Boolean       @default(false)
+  status       SpeakerStatus @default(PENDING)
+  submittedAt  DateTime? // null = draft, still waiting on the speaker
+  createdAt    DateTime      @default(now())
+}
