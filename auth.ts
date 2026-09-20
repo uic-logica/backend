@@ -20,9 +20,14 @@ const smtp = {
   },
 };
 
-// ponytail: passwordless sign-in only — Auth.js emails a 6-digit code, the user
-// posts it back to /api/auth/callback/nodemailer?token=<code>&email=<email>.
-// Sign-in is restricted to ALLOWED_EMAIL_DOMAIN and fails closed if it is unset.
+/**
+ * Two sign-in systems, one Auth.js instance — see AUTH.md for the full
+ * design and why. MEMBER accounts (UIC .edu) use this Nodemailer provider,
+ * unchanged. SPEAKER accounts (no .edu required) use a username + password
+ * checked by `POST /api/auth/speaker-login` — deliberately NOT an Auth.js
+ * Credentials provider; see lib/session.ts for why that doesn't work here.
+ * `auth()` below reads either kind of session identically once it exists.
+ */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: withGuessLimit(PrismaAdapter(prisma)),
   providers: [
@@ -66,7 +71,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Runs twice per sign-in: once before the code is emailed, once when it is
     // redeemed. Both must pass, so a non-.edu address never receives a code.
     // The first call also counts the code request against the address (#14).
+    // SPEAKER accounts never reach this provider at all (see above), but the
+    // check stays as a second line of defense in case that ever changes.
     async signIn({ user, email }) {
+      if (user.accountKind === "SPEAKER") return false;
       if (!isAllowedEmail(user.email)) return false;
       if (email?.verificationRequest) return allowCodeRequest(user.email!);
       return true;
@@ -82,6 +90,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     //
     // The JWT strategy hard-codes a minimal object for this reason; the database
     // strategy leaves it to us. Add fields here deliberately, one at a time.
+    //
+    // This also runs for SPEAKER sessions created directly by
+    // lib/session.ts — that path skips `signIn` above (no provider involved)
+    // but still goes through the adapter's `getSessionAndUser`, which calls
+    // this callback the same as any other session.
     async session({ session, user }) {
       return {
         expires: session.expires,
@@ -91,6 +104,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           image: user.image,
           role: user.role,
+          accountKind: user.accountKind,
+          username: user.username,
+          mustChangePassword: user.mustChangePassword,
         },
       };
     },

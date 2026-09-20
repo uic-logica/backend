@@ -12,6 +12,15 @@ enum Role {
   EXEC_BOARD
 }
 
+// MEMBER accounts sign in passwordless (UIC .edu OTP, see auth.ts) and Role
+// governs what they can do. SPEAKER accounts sign in with a username +
+// password instead (no .edu required) and Role is meaningless for them —
+// see AUTH.md for the full design and why these are two separate systems.
+enum AccountKind {
+  MEMBER
+  SPEAKER
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -24,13 +33,25 @@ model User {
   gradYear      Int?
   createdAt     DateTime  @default(now())
 
-  accounts    Account[]
-  sessions    Session[]
-  posts       Post[]
-  rsvps       Rsvp[]
-  attendances Attendance[] @relation("Attended")
-  checkIns    Attendance[] @relation("CheckedInBy")
-  submissions Submission[]
+  // --- SPEAKER accounts only (accountKind = SPEAKER) — see AUTH.md ---
+  accountKind         AccountKind @default(MEMBER)
+  username            String?     @unique
+  passwordHash        String? // scrypt, see lib/password.ts — never set for MEMBER accounts
+  mustChangePassword  Boolean     @default(false)
+  linkedin            String?
+  resumeUrl           String?
+  speakerSubmissionId String?     @unique
+  speakerSubmission   SpeakerSubmission? @relation(fields: [speakerSubmissionId], references: [id])
+
+  accounts        Account[]
+  sessions        Session[]
+  posts           Post[]
+  rsvps           Rsvp[]
+  attendances     Attendance[] @relation("Attended")
+  checkIns        Attendance[] @relation("CheckedInBy")
+  submissions     Submission[]
+  notifications   Notification[]
+  emailPreference EmailPreference?
 }
 
 // Required by @auth/prisma-adapter — do not rename fields.
@@ -233,4 +254,30 @@ model SpeakerSubmission {
   status       SpeakerStatus @default(PENDING)
   submittedAt  DateTime? // null = draft, still waiting on the speaker
   createdAt    DateTime      @default(now())
+
+  user User? // set once EXEC_BOARD invites this speaker to the portal — see AUTH.md
+}
+
+/**
+ * Two categories to start — event reminders (what's coming up) vs
+ * announcements (general club news). Split further only when a speaker
+ * actually asks for finer control; see AUTH.md.
+ */
+model EmailPreference {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  eventReminders Boolean @default(true)
+  announcements  Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
