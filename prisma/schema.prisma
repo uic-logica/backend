@@ -160,3 +160,32 @@ model SignInLimit {
   codeRequests Int      @default(0) // codes issued in the current window
   windowEndsAt DateTime
 }
+
+enum ApplicationTrack {
+  GENERAL
+  SOFTWARE_ENGINEER
+  MENTORSHIP
+}
+
+enum ApplicationStatus {
+  PENDING
+  INTERVIEW
+  ACCEPTED
+  DECLINED
+}
+
+// Membership applications from the /join page (#27). Public submit, board review.
+// Not tied to a User: applicants may not have signed in yet.
+model MembershipApplication {
+  id        String            @id @default(cuid())
+  name      String
+  email     String
+  track     ApplicationTrack
+  major     String?
+  gradYear  Int?
+  why       String
+  status    ApplicationStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+
+  @@index([email])
+}
