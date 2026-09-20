@@ -135,12 +135,13 @@ model EventMaterial {
 }
 
 model Event {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   description String?
   location    String?
   startsAt    DateTime
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  remindedAt  DateTime? // set once the cron job (app/api/cron/event-reminders) has notified GOING rsvps
 
   rsvps       Rsvp[]
   attendances Attendance[]
