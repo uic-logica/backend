@@ -29,6 +29,7 @@ Headless Next.js API (App Router route handlers only, no pages). Auth, roles, an
 - `app/api/join` — membership applications from the `/join` page: public `POST`, board-only `GET` and `PATCH /:id` to set the status.
 - `prisma/seed.ts` — throwaway local dev sample data matching the scaffolding above. Not wired into CI or `prisma migrate`; run with `npx tsx prisma/seed.ts`.
 - `app/api/speakers/*` — the speaker intake + portal system (public intake form's backend, EXEC_BOARD's `/invite` to create a portal account, `/api/speaker-profile`, `/api/notifications`, `/api/email-preferences`). See AUTH.md for the account side, `lib/speaker-submission.ts` for the intake-form data shape.
+- `lib/notify.ts` — every "tell a user something" path (in-app + email, respecting their `EmailPreference`) goes through this. `lib/upload.ts` — shared file-upload parsing for resumes (`/api/profile/resume`, `/api/resume/:userId`) and event materials (`/api/events/:id/materials`, `/api/materials/:id/download`). `app/api/events/[id]/feed` — per-event notes (`Post.eventId`). All documented together in AUTH.md.
 
 ## Workflow
 
