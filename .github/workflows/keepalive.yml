@@ -1,0 +1,47 @@
+name: Keepalive
+
+# Supabase pauses a free project after about a week with no database
+# activity, and a paused project takes anywhere from minutes to hours to
+# restore. It happened once already.
+#
+# The daily reminder cron (vercel.json) queries the database on every run,
+# so in normal operation it keeps the project awake by itself. This exists
+# for when that stops being true — a failed deploy, a removed cron, an env
+# var someone cleared — because the failure is silent and you only find out
+# when the site is down and the database needs an hour to wake up.
+#
+# It pings a public endpoint that reads from the database, so there is no
+# secret here and nothing to rotate. It doubles as a crude uptime check.
+
+on:
+  schedule:
+    # Every three days. The threshold is ~7, so a single missed run is fine.
+    - cron: "17 9 */3 * *"
+  workflow_dispatch: # so anyone can wake it by hand before a demo
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the database
+        env:
+          # Set this once under Settings -> Secrets and variables -> Actions
+          # -> Variables. It's a public URL, not a secret.
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+        run: |
+          if [ -z "$BACKEND_URL" ]; then
+            echo "BACKEND_URL variable is not set — nothing to ping."
+            echo "Set it to the deployed backend's origin, e.g. https://backend-xyz.vercel.app"
+            exit 1
+          fi
+          # /api/events is public and does a real query, which is the point.
+          code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 45 "$BACKEND_URL/api/events")
+          echo "GET $BACKEND_URL/api/events -> $code"
+          head -c 200 /tmp/body; echo
+          # A paused project usually surfaces as a 5xx from the backend
+          # rather than a timeout, so treat anything non-2xx as a failure
+          # worth an email.
+          case "$code" in
+            2*) echo "Awake." ;;
+            *) echo "::error::Backend did not return 2xx — the database may be paused or the deploy is broken."; exit 1 ;;
+          esac
