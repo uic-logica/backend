@@ -21,6 +21,18 @@ enum AccountKind {
   SPEAKER
 }
 
+// What someone does on the board. Purely cosmetic: it decides what gets
+// pinned to the top of their dashboard, nothing else. Every BOARD/EXEC_BOARD
+// account can see and do everything regardless — Role is the access control,
+// Officer is just "which of this do you look at first".
+enum Officer {
+  PRESIDENT
+  TREASURER
+  SECRETARY
+  OUTREACH
+  OTHER
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -28,6 +40,7 @@ model User {
   emailVerified DateTime?
   image         String?
   role          Role      @default(MEMBER)
+  officer       Officer?
   bio           String?
   major         String?
   gradYear      Int?
@@ -61,6 +74,11 @@ model User {
   uploadedMaterials EventMaterial[]
   speakerMessages   SpeakerMessage[]
   mcpTokens         McpToken[]
+
+  boardItems        BoardItem[] @relation("BoardItemAuthor")
+  ownedBoardItems   BoardItem[] @relation("BoardItemOwner")
+  frontedBoardItems BoardItem[] @relation("BoardItemPaidBy")
+  stagedBoardItems  BoardItem[] @relation("BoardItemStager")
 }
 
 /**
@@ -174,6 +192,7 @@ model Event {
   posts       Post[]
   materials   EventMaterial[]
   speaker     SpeakerSubmission?
+  boardItems  BoardItem[]
 }
 
 enum RsvpStatus {
@@ -376,4 +395,85 @@ model Notification {
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/**
+ * A pot of money for a term. Items draw it down; what's left is computed,
+ * never stored, so a corrected amount can't leave a stale balance behind.
+ * See budgetRollup() in lib/board-item.ts.
+ */
+model Budget {
+  id          String   @id @default(cuid())
+  label       String // "Fall 2026"
+  amountCents Int
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime @default(now())
+
+  items BoardItem[]
+}
+
+/**
+ * One thing the board is tracking. A spend and a company we're talking to are
+ * the same shape — a title, a stage, whose move it is, and when — so they're
+ * one table with two kinds rather than two near-identical ones. The UI renders
+ * both from the same component; only which columns it shows differs.
+ * logica-lean: no Company model. `org` is text, and a company with two
+ * contacts is two rows. Add the join when someone actually needs a company
+ * page with history on it.
+ * logica-lean: no per-item comment thread and no audit table. `detail` plus
+ * stageChangedBy/At answers "who approved this and when", which is the
+ * question the treasurer actually has.
+ */
+model BoardItem {
+  id    String        @id @default(cuid())
+  kind  BoardItemKind
+  title String
+  // logica-lean: a validated string, not a Prisma enum. The board will rename
+  // these as they learn their own process, and an enum makes every rename a
+  // migration. Validated against STAGES[kind] in lib/board-item.ts.
+  stage String
+
+  detail String?
+
+  ownerId          String? // the exec whose move it is
+  nextStepAt       DateTime?
+  stageChangedById String?
+  stageChangedAt   DateTime?
+  archivedAt       DateTime?
+
+  // --- MONEY ---
+  budgetId     String?
+  amountCents  Int?
+  paidByUserId String? // set => someone fronted it => it's owed back to them
+  receiptUrl   String?
+
+  // --- OUTREACH ---
+  org          String?
+  contactName  String?
+  contactEmail String?
+  channel      String? // how we reached them: LinkedIn, email, in person, a referral
+  category     String? // company visit / talk / workshop / partner — the public site's own taxonomy
+  link         String?
+  lastTouchAt  DateTime?
+
+  eventId     String? // the visit, talk or workshop this belongs to
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  budget         Budget? @relation(fields: [budgetId], references: [id], onDelete: SetNull)
+  owner          User?   @relation("BoardItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  paidBy         User?   @relation("BoardItemPaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
+  stageChangedBy User?   @relation("BoardItemStager", fields: [stageChangedById], references: [id], onDelete: SetNull)
+  createdBy      User    @relation("BoardItemAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+  event          Event?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([kind, stage])
+  @@index([ownerId])
+}
+
+enum BoardItemKind {
+  MONEY
+  OUTREACH
 }

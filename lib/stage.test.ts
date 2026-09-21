@@ -58,6 +58,29 @@ describe("MCP tools per stage", () => {
     }
   });
 
+  /**
+   * The board's money and outreach tools. A guest speaker with a token must
+   * never see the club's budget, and a plain member must not be able to
+   * approve a spend.
+   */
+  it("keeps the money and outreach pipelines to the board", () => {
+    const boardTools = [
+      "list_board_items",
+      "add_board_item",
+      "update_board_item",
+      "budget_status",
+      "club_insights",
+      "find_documents",
+    ];
+    for (const tool of boardTools) {
+      expect(names("BOARD"), tool).toContain(tool);
+      expect(names("EXEC_BOARD"), tool).toContain(tool);
+      expect(names("MEMBER"), tool).not.toContain(tool);
+      expect(names("CANDIDATE"), tool).not.toContain(tool);
+      expect(names("SPEAKER"), tool).not.toContain(tool);
+    }
+  });
+
   it("reserves announce for exec board", () => {
     expect(names("EXEC_BOARD")).toContain("announce");
     expect(names("BOARD")).not.toContain("announce");

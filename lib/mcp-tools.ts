@@ -1,8 +1,18 @@
+import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
 import { parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
 import { type Stage, STAGE_LABELS, runsTheClub } from "@/lib/stage";
+import {
+  budgetRollup,
+  parseBoardItem,
+  STAGES,
+  STAGE_LABELS as BOARD_STAGE_LABELS,
+  validStage,
+} from "@/lib/board-item";
+import { clubInsights } from "@/lib/insights";
+import { driveConfigured, FOLDER_MIME, listFolder, searchFiles } from "@/lib/drive";
 
 type Json = Record<string, unknown>;
 
@@ -32,6 +42,30 @@ async function submissionOf(caller: Caller) {
     },
   });
   return row ?? fail("Your submission could not be found.");
+}
+
+function boardKind(value: unknown): BoardItemKind {
+  const kind = String(value ?? "").toUpperCase();
+  if (kind !== "MONEY" && kind !== "OUTREACH") fail("`kind` must be MONEY or OUTREACH.");
+  return kind;
+}
+
+/**
+ * Same validation the HTTP routes use, with the thrown message turned into
+ * something the agent can act on rather than a 400.
+ */
+function parseOrFail(input: Json, kind: BoardItemKind, creating: boolean) {
+  try {
+    return parseBoardItem(input, kind, { creating });
+  } catch (error) {
+    fail((error as Error).message);
+  }
+}
+
+/** Agents reason about "$12.50" far better than about 1250. */
+function money(cents: number | null | undefined): string | null {
+  if (cents === null || cents === undefined) return null;
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 const WINDOW = {
@@ -506,6 +540,303 @@ export const TOOLS: Tool[] = [
         },
       });
       return { id: event.id, title: event.title, startsAt: event.startsAt };
+    },
+  },
+
+  // ---- Board: the two pipelines, money and outreach --------------------
+  //
+  // These are why the board dashboard has an MCP surface at all: the
+  // treasurer wants to say "log forty dollars of pizza for the Aon visit"
+  // rather than open a form, and the outreach lead wants to say "who still
+  // owes a reply". Same table, same rules, same validation as the HTTP
+  // routes — everything routes through lib/board-item.ts.
+  {
+    name: "list_board_items",
+    description:
+      "List what the board is tracking — spending (MONEY) or companies and guests we're talking to (OUTREACH). Filter by stage, or by what's assigned to you.",
+    stages: ["BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: str("MONEY or OUTREACH. Leave out for both."),
+        stage: str("Only items at this stage. See whoami or omit to see all."),
+        mine: { type: "boolean", description: "Only items you own." },
+        includeArchived: { type: "boolean", description: "Include archived items." },
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const kind = input.kind === undefined ? undefined : boardKind(input.kind);
+      const stage = input.stage === undefined ? undefined : String(input.stage).toUpperCase();
+      if (stage && kind && !validStage(kind, stage)) {
+        fail(`"${stage}" isn't a stage for ${kind}. Use one of: ${STAGES[kind].join(", ")}.`);
+      }
+      const items = await prisma.boardItem.findMany({
+        where: {
+          ...(kind ? { kind } : {}),
+          ...(stage ? { stage } : {}),
+          ...(input.mine === true ? { ownerId: caller.id } : {}),
+          ...(input.includeArchived === true ? {} : { archivedAt: null }),
+        },
+        orderBy: [{ nextStepAt: "asc" }, { updatedAt: "desc" }],
+        take: 200,
+        include: {
+          owner: { select: { name: true, email: true } },
+          event: { select: { title: true, startsAt: true } },
+          budget: { select: { label: true } },
+        },
+      });
+      return items.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: item.title,
+        stage: item.stage,
+        stageLabel: BOARD_STAGE_LABELS[item.stage] ?? item.stage,
+        detail: item.detail,
+        owner: item.owner?.name ?? item.owner?.email ?? null,
+        nextStepAt: item.nextStepAt,
+        archived: item.archivedAt !== null,
+        ...(item.kind === "MONEY"
+          ? {
+              amount: money(item.amountCents),
+              budget: item.budget?.label ?? "unbudgeted",
+              fronted: item.paidByUserId !== null,
+              receiptUrl: item.receiptUrl,
+            }
+          : {
+              org: item.org,
+              contact: item.contactName,
+              contactEmail: item.contactEmail,
+              channel: item.channel,
+              category: item.category,
+              link: item.link,
+              lastTouchAt: item.lastTouchAt,
+            }),
+        event: item.event?.title ?? null,
+      }));
+    },
+  },
+
+  {
+    name: "add_board_item",
+    description:
+      "Track something new. MONEY for a cost the club is about to incur or has paid; OUTREACH for a company, speaker or partner we want to talk to. Amounts are whole cents.",
+    stages: ["BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["kind", "title"],
+      properties: {
+        kind: str("MONEY or OUTREACH."),
+        title: str("What it is. 'Pizza for the Aon visit', 'Zebra — workshop'."),
+        detail: str("Anything else worth knowing."),
+        stage: str("Where it starts. Defaults to REQUESTED (money) or PROSPECT (outreach)."),
+        nextStepAt: str("When the next move is due, ISO 8601."),
+        // Money
+        amountCents: { type: "integer", description: "Whole cents. $12.50 is 1250." },
+        paidByUserId: str("If a person fronted this out of pocket, their user id — it then shows as owed back to them."),
+        receiptUrl: str("Link to the receipt. http(s) only."),
+        // Outreach
+        org: str("Company or organisation name."),
+        contactName: str("Who we're talking to there."),
+        contactEmail: str("Their email."),
+        channel: str("How we reached them: LinkedIn, email, in person, a referral."),
+        category: str("Company visit, talk, workshop or partner."),
+        link: str("LinkedIn profile or thread link. http(s) only."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const kind = boardKind(input.kind);
+      const data = parseOrFail(input, kind, true);
+      const item = await prisma.boardItem.create({
+        data: {
+          ...(data as Prisma.BoardItemUncheckedCreateInput),
+          kind,
+          createdById: caller.id,
+          stageChangedById: caller.id,
+          stageChangedAt: new Date(),
+        },
+      });
+      return { id: item.id, kind: item.kind, title: item.title, stage: item.stage };
+    },
+  },
+
+  {
+    name: "update_board_item",
+    description:
+      "Move something along — approve a spend, mark that a company replied, hand it to someone else, or set when the next move is due.",
+    stages: ["BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: str("The item's id, from list_board_items."),
+        stage: str("Its new stage."),
+        title: str("Rename it."),
+        detail: str("Replace the notes."),
+        ownerId: str("Hand it to this user id."),
+        nextStepAt: str("When the next move is due, ISO 8601. Empty string clears it."),
+        amountCents: { type: "integer", description: "Whole cents (money items)." },
+        receiptUrl: str("Link to the receipt (money items)."),
+        contactName: str("Who we're talking to (outreach items)."),
+        contactEmail: str("Their email (outreach items)."),
+        channel: str("How we reached them (outreach items)."),
+        lastTouchAt: str("When we last spoke to them, ISO 8601 (outreach items)."),
+        archive: { type: "boolean", description: "Archive it (true) or bring it back (false)." },
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const id = String(input.id ?? "").trim();
+      if (!id) fail("`id` is required.");
+      const existing = await prisma.boardItem.findUnique({
+        where: { id },
+        select: { kind: true, stage: true },
+      });
+      if (!existing) fail("No item with that id.");
+
+      const data = parseOrFail(input, existing.kind, false);
+      const movedStage = typeof data.stage === "string" && data.stage !== existing.stage;
+
+      const item = await prisma.boardItem.update({
+        where: { id },
+        data: {
+          ...(data as Prisma.BoardItemUncheckedUpdateInput),
+          ...(movedStage ? { stageChangedById: caller.id, stageChangedAt: new Date() } : {}),
+          ...(input.archive === true ? { archivedAt: new Date() } : {}),
+          ...(input.archive === false ? { archivedAt: null } : {}),
+        },
+      });
+      return {
+        id: item.id,
+        title: item.title,
+        stage: item.stage,
+        stageLabel: BOARD_STAGE_LABELS[item.stage] ?? item.stage,
+        movedStage,
+      };
+    },
+  },
+
+  {
+    name: "budget_status",
+    description:
+      "What's left in the club's budget, what's waiting on approval, and who is owed money back out of their own pocket.",
+    stages: ["BOARD", "EXEC_BOARD"],
+    inputSchema: none,
+    run: async () => {
+      const budgets = await prisma.budget.findMany({
+        orderBy: { startsAt: "desc" },
+        include: {
+          items: {
+            where: { archivedAt: null },
+            select: { stage: true, amountCents: true, paidByUserId: true },
+          },
+        },
+      });
+
+      const awaitingApproval = await prisma.boardItem.findMany({
+        where: { kind: "MONEY", stage: "REQUESTED", archivedAt: null },
+        select: { id: true, title: true, amountCents: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const owedBack = await prisma.boardItem.findMany({
+        where: {
+          kind: "MONEY",
+          archivedAt: null,
+          NOT: [{ paidByUserId: null }, { stage: "REIMBURSED" }, { stage: "DECLINED" }],
+        },
+        select: {
+          id: true,
+          title: true,
+          amountCents: true,
+          paidBy: { select: { name: true, email: true } },
+        },
+      });
+
+      // Spends filed under no budget still left the account. Reporting only
+      // the budgets would tell the treasurer they have more than they do.
+      const loose = await prisma.boardItem.findMany({
+        where: { kind: "MONEY", budgetId: null, archivedAt: null },
+        select: { stage: true, amountCents: true, paidByUserId: true },
+      });
+      const looseRoll = budgetRollup(0, loose);
+
+      return {
+        budgets: budgets.map((budget) => {
+          const roll = budgetRollup(budget.amountCents, budget.items);
+          return {
+            label: budget.label,
+            total: money(roll.amountCents),
+            spent: money(roll.spentCents),
+            awaitingOrApproved: money(roll.pendingCents),
+            left: money(roll.remainingCents),
+            overspent: roll.remainingCents < 0,
+          };
+        }),
+        unbudgeted: {
+          count: loose.length,
+          spent: money(looseRoll.spentCents),
+          awaitingOrApproved: money(looseRoll.pendingCents),
+        },
+        awaitingApproval: awaitingApproval.map((i) => ({
+          id: i.id,
+          title: i.title,
+          amount: money(i.amountCents),
+          waitingSince: i.createdAt,
+        })),
+        owedBack: owedBack.map((i) => ({
+          id: i.id,
+          title: i.title,
+          amount: money(i.amountCents),
+          to: i.paidBy?.name ?? i.paidBy?.email ?? "someone",
+        })),
+      };
+    },
+  },
+
+  {
+    name: "club_insights",
+    description:
+      "How the club is actually doing: how many members, how many are still turning up, which events landed, and who comes to everything.",
+    stages: ["BOARD", "EXEC_BOARD"],
+    inputSchema: none,
+    run: async () => {
+      const data = await clubInsights();
+      return {
+        ...data,
+        // Spelled out so an agent reads it right rather than guessing.
+        note: `"Active" means checked in to at least one event in the last ${data.members.activeWindowDays} days. showRate is attended / said-they'd-come, as a percentage; null means nobody RSVP'd.`,
+      };
+    },
+  },
+
+  {
+    name: "find_documents",
+    description:
+      "Search the club's Google Drive by file name — the constitution, budgets, decks, run-of-shows. Returns links, not file contents.",
+    stages: ["BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: str("Part of the file name. Leave out to list the top-level folder."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      if (!driveConfigured()) {
+        fail("Google Drive isn't connected yet — an exec needs to add the service account in the dashboard settings.");
+      }
+      const query = input.query === undefined ? "" : String(input.query).trim();
+      const files = query ? await searchFiles(query) : await listFolder();
+      return files.slice(0, 50).map((file) => ({
+        name: file.name,
+        isFolder: file.mimeType === FOLDER_MIME,
+        link: file.webViewLink ?? null,
+        modified: file.modifiedTime ?? null,
+        owner: file.owners?.[0]?.displayName ?? null,
+        folderId: file.mimeType === FOLDER_MIME ? file.id : null,
+      }));
     },
   },
 
