@@ -13,9 +13,34 @@ const SELF_FIELDS = {
   resumeFilename: true, // upload/remove via /api/profile/resume, same as MEMBER accounts
   mustChangePassword: true,
   speakerSubmission: {
-    select: { organization: true, availability: true, needs: true, note: true },
+    select: {
+      id: true,
+      organization: true,
+      availability: true,
+      needs: true,
+      note: true,
+      talkTitle: true,
+      slidesUrl: true,
+      event: { select: { id: true, title: true, startsAt: true, location: true } },
+    },
   },
 } as const;
+
+/**
+ * How the speaker's own talk is going: who said they're coming, who actually
+ * turned up, and how many questions landed on its feed. Only meaningful once
+ * the board has attached the scheduled Event to the submission — before that
+ * there is nothing to count, and `null` is what says so.
+ */
+async function talkStats(eventId: string | undefined) {
+  if (!eventId) return null;
+  const [rsvpGoing, checkedIn, questions] = await Promise.all([
+    prisma.rsvp.count({ where: { eventId, status: "GOING" } }),
+    prisma.attendance.count({ where: { eventId } }),
+    prisma.post.count({ where: { eventId } }),
+  ]);
+  return { rsvpGoing, checkedIn, questions };
+}
 
 /** SPEAKER accounts only — self-view/edit. Availability etc. live on the linked SpeakerSubmission. */
 export async function GET() {
@@ -26,7 +51,8 @@ export async function GET() {
   }
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: SELF_FIELDS });
-  return NextResponse.json(user);
+  const stats = await talkStats(user?.speakerSubmission?.event?.id);
+  return NextResponse.json({ ...user, talkStats: stats });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -60,7 +86,7 @@ export async function PATCH(request: NextRequest) {
   if (!submissionFields.ok) {
     return NextResponse.json({ error: submissionFields.error }, { status: 400 });
   }
-  const { organization, availability, needs, note } = submissionFields.data;
+  const { organization, availability, needs, note, talkTitle, slidesUrl } = submissionFields.data;
 
   const current = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!current?.speakerSubmissionId) {
@@ -73,7 +99,7 @@ export async function PATCH(request: NextRequest) {
   const [, user] = await prisma.$transaction([
     prisma.speakerSubmission.update({
       where: { id: current.speakerSubmissionId },
-      data: { organization, availability, needs, note },
+      data: { organization, availability, needs, note, talkTitle, slidesUrl },
     }),
     prisma.user.update({
       where: { id: session.user.id },
@@ -82,5 +108,6 @@ export async function PATCH(request: NextRequest) {
     }),
   ]);
 
-  return NextResponse.json(user);
+  const stats = await talkStats(user.speakerSubmission?.event?.id);
+  return NextResponse.json({ ...user, talkStats: stats });
 }

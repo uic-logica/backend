@@ -15,6 +15,8 @@ export type SpeakerFields = {
   needs?: string;
   note?: string; // shared — either side can add context ("can't make Wednesday, works Thursday instead")
   publicOptIn?: boolean;
+  talkTitle?: string;
+  slidesUrl?: string; // a link, so the deck opens on whatever machine is in the room
 };
 
 export type ParseResult =
@@ -57,7 +59,7 @@ function parseAvailability(value: unknown): { ok: true; windows: AvailabilityWin
  * rules. Pure — no I/O, easy to test.
  */
 export function parseSpeakerFields(payload: unknown): ParseResult {
-  const { name, email, organization, referredBy, availability, needs, note, publicOptIn } =
+  const { name, email, organization, referredBy, availability, needs, note, publicOptIn, talkTitle, slidesUrl } =
     (payload ?? {}) as Record<string, unknown>;
 
   const data: SpeakerFields = {};
@@ -97,6 +99,21 @@ export function parseSpeakerFields(payload: unknown): ParseResult {
   }
   if (publicOptIn !== undefined) {
     data.publicOptIn = publicOptIn === true;
+  }
+  if (talkTitle !== undefined) {
+    if (typeof talkTitle !== "string") return { ok: false, error: "`talkTitle` must be a string." };
+    if (talkTitle.length > 200) return { ok: false, error: "`talkTitle` must be 200 characters or fewer." };
+    data.talkTitle = talkTitle.trim();
+  }
+  if (slidesUrl !== undefined) {
+    if (typeof slidesUrl !== "string") return { ok: false, error: "`slidesUrl` must be a string." };
+    const trimmed = slidesUrl.trim();
+    // Empty clears the link. Anything else has to be a real http(s) URL —
+    // this ends up as an href, so `javascript:` and friends stay out.
+    if (trimmed && !/^https?:\/\/\S+$/i.test(trimmed)) {
+      return { ok: false, error: "`slidesUrl` must be a link starting with http:// or https://." };
+    }
+    data.slidesUrl = trimmed;
   }
 
   return { ok: true, data };

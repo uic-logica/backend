@@ -34,10 +34,10 @@ model User {
   createdAt     DateTime  @default(now())
 
   // --- SPEAKER accounts only (accountKind = SPEAKER) — see AUTH.md ---
-  accountKind         AccountKind @default(MEMBER)
-  username            String?     @unique
+  accountKind         AccountKind        @default(MEMBER)
+  username            String?            @unique
   passwordHash        String? // scrypt, see lib/password.ts — never set for MEMBER accounts
-  mustChangePassword  Boolean     @default(false)
+  mustChangePassword  Boolean            @default(false)
   linkedin            String?
   // Resume — any signed-in user (MEMBER or SPEAKER) can attach one via
   // /api/profile/resume. ponytail: stored as bytes in Postgres, not object
@@ -46,19 +46,20 @@ model User {
   resumeData          Bytes?
   resumeFilename      String?
   resumeMimeType      String?
-  speakerSubmissionId String?     @unique
+  speakerSubmissionId String?            @unique
   speakerSubmission   SpeakerSubmission? @relation(fields: [speakerSubmissionId], references: [id])
 
   accounts          Account[]
   sessions          Session[]
   posts             Post[]
   rsvps             Rsvp[]
-  attendances       Attendance[] @relation("Attended")
-  checkIns          Attendance[] @relation("CheckedInBy")
+  attendances       Attendance[]     @relation("Attended")
+  checkIns          Attendance[]     @relation("CheckedInBy")
   submissions       Submission[]
   notifications     Notification[]
   emailPreference   EmailPreference?
   uploadedMaterials EventMaterial[]
+  speakerMessages   SpeakerMessage[]
 }
 
 // Required by @auth/prisma-adapter — do not rename fields.
@@ -148,6 +149,7 @@ model Event {
   checkInCode CheckInCode?
   posts       Post[]
   materials   EventMaterial[]
+  speaker     SpeakerSubmission?
 }
 
 enum RsvpStatus {
@@ -192,9 +194,9 @@ model CheckInCode {
 }
 
 model Form {
-  id     String @id @default(cuid())
-  slug   String @unique
-  title  String
+  id    String @id @default(cuid())
+  slug  String @unique
+  title String
 
   fields      FormField[]
   submissions Submission[]
@@ -288,7 +290,37 @@ model SpeakerSubmission {
   submittedAt  DateTime? // null = draft, still waiting on the speaker
   createdAt    DateTime      @default(now())
 
-  user User? // set once EXEC_BOARD invites this speaker to the portal — see AUTH.md
+  // What the speaker is actually coming to give. The speaker names and
+  // re-names this themselves; the board attaches the scheduled Event once
+  // there is one, which is what turns on the talk's attendance numbers.
+  talkTitle String?
+  slidesUrl String? // a link, not a file — so it opens on whatever machine is in the room
+  eventId   String? @unique
+
+  event    Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  user     User? // set once EXEC_BOARD invites this speaker to the portal — see AUTH.md
+  messages SpeakerMessage[]
+}
+
+/**
+ * The speaker's thread with the board — one per submission, so it exists
+ * from the moment there's a speaker to talk to. Everyone on the board sees
+ * and answers the same thread; the speaker sees only their own.
+ * `body` is stored exactly as typed, including `[[event:<id>|Label]]`
+ * references — resolving them is the reader's job (see Thread.tsx), so a
+ * renamed event never rewrites what someone actually wrote.
+ */
+model SpeakerMessage {
+  id           String   @id @default(cuid())
+  submissionId String
+  authorId     String
+  body         String
+  createdAt    DateTime @default(now())
+
+  submission SpeakerSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  author     User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, createdAt])
 }
 
 /**

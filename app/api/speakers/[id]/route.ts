@@ -47,7 +47,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   });
 }
 
-/** Board+ only — confirm or decline a speaker submission. */
+/**
+ * Board+ only — confirm or decline a speaker submission, and/or attach the
+ * scheduled Event to it. Attaching the event is what gives the speaker's own
+ * dashboard real attendance numbers, so it's the same call, not a new route.
+ */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
@@ -62,9 +66,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const { status } = (payload ?? {}) as Record<string, unknown>;
-  if (typeof status !== "string" || !STATUSES.includes(status as (typeof STATUSES)[number])) {
+  const { status, eventId } = (payload ?? {}) as Record<string, unknown>;
+  if (status !== undefined && (typeof status !== "string" || !STATUSES.includes(status as (typeof STATUSES)[number]))) {
     return NextResponse.json({ error: `\`status\` must be one of: ${STATUSES.join(", ")}.` }, { status: 400 });
+  }
+  // `null` unlinks; a string links. Absent leaves it alone, which is why
+  // this can't just coalesce to null.
+  if (eventId !== undefined && eventId !== null && typeof eventId !== "string") {
+    return NextResponse.json({ error: "`eventId` must be an event id or null." }, { status: 400 });
+  }
+  if (status === undefined && eventId === undefined) {
+    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
   const { id } = await params;
@@ -73,7 +85,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const updated = await prisma.speakerSubmission.update({
     where: { id },
-    data: { status: status as (typeof STATUSES)[number] },
+    data: {
+      ...(status === undefined ? {} : { status: status as (typeof STATUSES)[number] }),
+      ...(eventId === undefined ? {} : { eventId: eventId as string | null }),
+    },
     include: { user: { select: { id: true } } }, // id only — never leak passwordHash etc. through this response
   });
 

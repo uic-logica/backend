@@ -24,7 +24,10 @@ export async function GET() {
 
   const submissions = await prisma.speakerSubmission.findMany({
     orderBy: { createdAt: "desc" },
-    include: { user: { select: { id: true, username: true, linkedin: true, resumeFilename: true } } },
+    include: {
+      user: { select: { id: true, username: true, linkedin: true, resumeFilename: true } },
+      event: { select: { id: true, title: true, startsAt: true, location: true } },
+    },
   });
   return NextResponse.json(submissions);
 }
