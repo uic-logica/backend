@@ -89,6 +89,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...(status === undefined ? {} : { status: status as (typeof STATUSES)[number] }),
       ...(eventId === undefined ? {} : { eventId: eventId as string | null }),
     },
+    omit: { inviteTokenHash: true }, // the invite's hash never leaves lib/invite.ts
     include: { user: { select: { id: true } } }, // id only — never leak passwordHash etc. through this response
   });
 

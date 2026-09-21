@@ -303,6 +303,15 @@ model MembershipApplication {
   @@index([email])
 }
 
+// What a guest is coming to do. The pipeline is identical either way —
+// availability, then a decision, then a date — so this is one column, not a
+// second set of models. Matches the taxonomy the public site already uses.
+enum VisitKind {
+  TALK
+  WORKSHOP
+  COMPANY_VISIT
+}
+
 enum SpeakerStatus {
   PENDING
   CONFIRMED
@@ -332,6 +341,18 @@ model SpeakerSubmission {
   status       SpeakerStatus @default(PENDING)
   submittedAt  DateTime? // null = draft, still waiting on the speaker
   createdAt    DateTime      @default(now())
+
+  // What we're asking them for. Changes the words they read, not the flow —
+  // a workshop host and a speaker go through exactly the same steps.
+  kind VisitKind @default(TALK)
+
+  // A single-use link the board sends so someone can set up their own
+  // account: one click, pick an email and a password, and they're in. The
+  // secret is never stored — only its sha256 — and it dies on first use or
+  // at expiry, whichever comes first. See lib/invite.ts.
+  inviteTokenHash String?   @unique
+  inviteExpiresAt DateTime?
+  inviteUsedAt    DateTime?
 
   // What the speaker is actually coming to give. The speaker names and
   // re-names this themselves; the board attaches the scheduled Event once
