@@ -15,6 +15,7 @@ const SELF_FIELDS = {
   speakerSubmission: {
     select: {
       id: true,
+      kind: true, // decides whether their own dashboard says talk or workshop
       organization: true,
       availability: true,
       needs: true,

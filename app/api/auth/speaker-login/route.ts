@@ -30,7 +30,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
   }
 
-  const user = await prisma.user.findUnique({ where: { username } });
+  // Username or email. Guests who set up their own account through an
+  // invite link have their email as their username, and they will type the
+  // email — but the exec email-invite path still mints "ada.lovelace", so
+  // both have to work. Both columns are unique, so this can't be ambiguous.
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ username }, { email: username }] },
+  });
   if (!user || user.accountKind !== "SPEAKER" || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
     return NextResponse.json({ error: "Incorrect username or password." }, { status: 401 });
   }

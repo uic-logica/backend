@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { runsWorkspace } from "@/lib/authz";
 import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
@@ -55,8 +55,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (session.user.accountKind !== "MEMBER" || !hasRole(session.user.role, "BOARD")) {
-    return NextResponse.json({ error: "Only board members can update speaker submissions." }, { status: 403 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can update guest submissions for now." }, { status: 403 });
   }
 
   let payload: unknown;
@@ -89,6 +89,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ...(status === undefined ? {} : { status: status as (typeof STATUSES)[number] }),
       ...(eventId === undefined ? {} : { eventId: eventId as string | null }),
     },
+    omit: { inviteTokenHash: true }, // the invite's hash never leaves lib/invite.ts
     include: { user: { select: { id: true } } }, // id only — never leak passwordHash etc. through this response
   });
 

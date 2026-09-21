@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { runsWorkspace } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
 import { parseFreshSubmission } from "@/lib/speaker-submission";
@@ -18,18 +18,32 @@ import { parseFreshSubmission } from "@/lib/speaker-submission";
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (session.user.accountKind !== "MEMBER" || !hasRole(session.user.role, "BOARD")) {
-    return NextResponse.json({ error: "Only board members can view speaker submissions." }, { status: 403 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can view guest submissions for now." }, { status: 403 });
   }
 
   const submissions = await prisma.speakerSubmission.findMany({
     orderBy: { createdAt: "desc" },
+    // Explicit, not `include` — a bare findMany would hand the board every
+    // column, and one of them is now the invite's hash. Nothing outside
+    // lib/invite.ts has any business seeing that.
+    omit: { inviteTokenHash: true },
     include: {
       user: { select: { id: true, username: true, linkedin: true, resumeFilename: true } },
       event: { select: { id: true, title: true, startsAt: true, location: true } },
     },
   });
-  return NextResponse.json(submissions);
+  // `inviteLive` is what the UI actually needs: is there an unused link out
+  // there right now, or does this guest need a new one?
+  return NextResponse.json(
+    submissions.map(({ inviteExpiresAt, inviteUsedAt, ...row }) => ({
+      ...row,
+      inviteUsedAt,
+      inviteLive:
+        !row.user && !inviteUsedAt && !!inviteExpiresAt && inviteExpiresAt > new Date(),
+      inviteExpiresAt,
+    })),
+  );
 }
 
 /** Public, no auth — a stranger filling out the form cold, start to finish. Rate-limited per IP. */

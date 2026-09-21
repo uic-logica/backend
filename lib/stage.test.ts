@@ -49,13 +49,41 @@ describe("MCP tools per stage", () => {
     expect(names("SPEAKER")).toContain("get_talk_stats");
   });
 
-  it("keeps the board's pipeline away from guests and plain members", () => {
-    for (const boardTool of ["list_guests", "decide_on_guest", "schedule_guest", "create_event"]) {
-      expect(names("BOARD")).toContain(boardTool);
-      expect(names("MEMBER")).not.toContain(boardTool);
-      expect(names("CANDIDATE")).not.toContain(boardTool);
-      expect(names("SPEAKER")).not.toContain(boardTool);
+  it("keeps the guest pipeline to exec", () => {
+    for (const tool of ["list_guests", "decide_on_guest", "schedule_guest", "create_event"]) {
+      expect(names("EXEC_BOARD"), tool).toContain(tool);
+      for (const stage of ["BOARD", "MEMBER", "CANDIDATE", "SPEAKER"] as const) {
+        expect(names(stage), `${tool} / ${stage}`).not.toContain(tool);
+      }
     }
+  });
+
+  /**
+   * The workspace tools. A guest with a token must never see the club's
+   * budget, and BOARD does not see it either right now — board members are
+   * on the member view until that tier gets its own surface, and an agent
+   * must not be the way around that. Mirrors runsWorkspace() in lib/authz.
+   */
+  it("keeps money, outreach and the roster to exec", () => {
+    const workspace = [
+      "list_board_items",
+      "add_board_item",
+      "update_board_item",
+      "budget_status",
+      "club_insights",
+      "find_documents",
+    ];
+    for (const tool of workspace) {
+      expect(names("EXEC_BOARD"), tool).toContain(tool);
+      for (const stage of ["BOARD", "MEMBER", "CANDIDATE", "SPEAKER"] as const) {
+        expect(names(stage), `${tool} / ${stage}`).not.toContain(tool);
+      }
+    }
+  });
+
+  /** BOARD gets exactly what a member gets, no more, for now. */
+  it("gives a board member the member toolset and nothing beyond it", () => {
+    expect(names("BOARD").sort()).toEqual(names("MEMBER").sort());
   });
 
   it("reserves announce for exec board", () => {
