@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateTempPassword, hashPassword, slugifyUsername, verifyPassword } from "./password";
+import { generateMemberPassword, generateTempPassword, hashPassword, slugifyUsername, verifyPassword } from "./password";
 
 describe("hashPassword / verifyPassword", () => {
   it("verifies the correct password", () => {
@@ -51,5 +51,18 @@ describe("slugifyUsername", () => {
 
   it("never returns an empty string", () => {
     expect(slugifyUsername("!!!", "@example.com")).toBe("speaker");
+  });
+});
+
+
+describe("generated member credentials", () => {
+  it("generates unique 24-character passwords that verify", () => {
+    const passwords = Array.from({ length: 100 }, generateMemberPassword);
+    expect(new Set(passwords).size).toBe(100);
+    for (const password of passwords) expect(password).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(verifyPassword(passwords[0], hashPassword(passwords[0]))).toBe(true);
+  });
+  it.each(["scrypt::", "scrypt:zz:ff", `scrypt:${"ab".repeat(16)}:`, `scrypt:${"ab".repeat(16)}:aa`])("rejects corrupt hashes safely", (hash) => {
+    expect(verifyPassword("anything", hash)).toBe(false);
   });
 });

@@ -1,47 +1,40 @@
-# Auth
+# Authentication
 
-Two sign-in systems, two very different account types. Read this before touching `auth.ts`, `lib/session.ts`, `lib/password.ts`, or anything under `app/api/auth/`.
+## Member, board, and exec sign-in
 
-## The two account kinds
+All `accountKind: MEMBER` accounts now use their configured university email and an admin-issued generated password. `Role` still controls member/board/exec permissions; login cannot set or change it. No public account creation or email code login is enabled.
 
-| | `MEMBER` | `SPEAKER` |
-|---|---|---|
-| Who | UIC students/board | External guests confirmed via `/speak` |
-| Sign in | `.edu` email + one-time code | Username + password |
-| Created by | Signing in for the first time | EXEC_BOARD inviting a confirmed `SpeakerSubmission` |
-| What `Role` means | `MEMBER`/`BOARD`/`EXEC_BOARD` govern access | Nothing — always defaults to `MEMBER`, ignored |
-| Where it lives | `User.accountKind = MEMBER` | `User.accountKind = SPEAKER` |
+- `POST /api/auth/member-login` accepts `{ email, password }`, normalizes the email, checks the exact `ALLOWED_EMAIL_DOMAIN`, and creates an Auth.js database session. Passwords are case-sensitive and are never trimmed. Invalid input, wrong passwords, and wrong account kinds never create sessions.
+- Ten attempts per address per 15-minute window, counted atomically in Postgres using the existing `SignInLimit` table. Limits persist across instances and restarts. Successful sign-in does not clear the counter. No schema migration is needed.
+- Passwords have 24 base64url characters (144 random bits) and are hashed using Node scrypt with a random salt. Only the hash is saved. Hash format validation rejects corrupt or empty hashes before comparison.
+- `POST /api/board/members/password` is restricted server-side to MEMBER accounts with EXEC_BOARD role. It accepts `{ email }`, generates a new credential, creates a MEMBER account if needed, and preserves existing roles. It rejects guest accounts and self-reset. The response reveals the password once with `Cache-Control: no-store`.
+- Issuance revokes all existing sessions and MCP tokens, and removes old email codes in the same transaction. Login and issuance use the same per-email transaction lock so a concurrent old-password login cannot survive a reset.
+- Deliver issued passwords privately after checking identity; users should store them in a password manager. There is no email delivery dependency. Lost passwords are reset by another exec, or a server administrator using the command below. Member-selected passwords are not enabled.
+- JSON content type and origin checks protect credential mutations. Set `FRONTEND_URL` to the exact public frontend origin (for example `https://club.example.edu`, without a trailing slash) when using the frontend API proxy. Locally set it to `http://localhost:3000`. If unset, only the request URL's own origin is accepted.
 
-`Role` and `AccountKind` are separate columns on purpose. `Role` is "how much club access" and only makes sense for people who are actually in the club. `AccountKind` is "which sign-in system got you here at all." Don't conflate them — a `SPEAKER` account with `role: EXEC_BOARD` should never happen and nothing should ever check for it.
+## Bootstrap and recovery
 
-## MEMBER sign-in (unchanged)
+Before switching the frontend, issue credentials to at least one **existing exec account** from an interactive administrator terminal with the intended Logica `DATABASE_URL` and `ALLOWED_EMAIL_DOMAIN` loaded:
 
-Passwordless, `.edu`-restricted, exactly as before: Auth.js's `Nodemailer` provider emails a 6-digit code, `isAllowedEmail()` fails closed if `ALLOWED_EMAIL_DOMAIN` is unset, `POST /api/auth/otp/verify` exchanges the code for a session. See the comments in `auth.ts` and `lib/otp.ts`.
+```sh
+npx tsx scripts/issue-member-password.ts existing-exec@uic.edu
+```
 
-## SPEAKER sign-in (new)
+This generates a password and displays it once. It never promotes accounts; a new email receives MEMBER access. Existing roles, profile data, memberships, and attendance remain intact. It refuses redirected output to reduce accidental credential logging. Do not run it against another project's database. Use the exec dashboard's Members section to provision/reset the remaining accounts. If delivery of a password fails, issue a fresh one; hashes cannot be reversed.
 
-**How an account gets created:** a `SpeakerSubmission` (from `/speak`, see `lib/speaker-submission.ts`) reaches `status: CONFIRMED`. An EXEC_BOARD member calls `POST /api/speakers/:id/invite`, which:
-1. Generates a username from their name (`lib/password.ts`'s `slugifyUsername`, deduped with `-2`, `-3`... on collision).
-2. Generates a random temporary password, hashes it (`scrypt`, see below), creates the `User` row with `accountKind: SPEAKER` and `mustChangePassword: true`, and links it to the submission (`speakerSubmissionId`).
-3. Emails the username + temp password (`lib/speaker-email.ts`), and also returns the temp password once in the API response as a fallback if the email doesn't land.
+Deploy backend first, configure `FRONTEND_URL`, provision the exec, then deploy frontend. Existing sessions remain until expiration or credential issuance; each issued password revokes that user's sessions and MCP connections. No production data is modified by building or deploying the code itself.
 
-**How they sign in:** `POST /api/auth/speaker-login` with `{ username, password }`. Rate-limited 10 attempts / 15 min **per username** (not IP — a shared IP like campus wifi shouldn't lock out everyone behind it).
+## Passwordless archive
 
-**First login:** the session comes back with `mustChangePassword: true`. The frontend must gate on this and force `POST /api/auth/set-password` (`{ currentPassword, newPassword }`, min 8 characters) before letting them into anything else. `currentPassword` is required even on that first forced change — a session hijacked mid-flow shouldn't be able to lock the real owner out.
+The prior provider and verification route are preserved in `archive/passwordless/` along with a restoration checklist. Auth.js has no registered sign-in providers, so old Nodemailer callback URLs cannot issue sessions. `/api/auth/otp/verify` returns 410. The archive is not compiled or routed. Keep the existing verification tables until the future auth decision is made. The development role-switcher `/api/dev/login` is also retired (404) so it cannot bypass password login.
 
-### Why this isn't an Auth.js `Credentials` provider
+## Speakers and guests
 
-We tried that first. **It doesn't work with `session: { strategy: "database" }`** — verified empirically, not from documentation: `authorize()` runs and returns a user, Auth.js issues a `302` with a `Set-Cookie`, but the cookie is a JWT-encoded blob, no row is ever written to the `Session` table, and `auth()` / `/api/auth/session` both come back empty on the very next request. This matches Auth.js v4's long-standing "Credentials requires JWT sessions" restriction — it still effectively holds in v5 with the Prisma adapter, it just doesn't throw an error telling you so.
+Speaker/guest username + password sign-in remains at `/api/auth/speaker-login`; their invite and forced password-change flows are unchanged. MEMBER passwords cannot be changed through the speaker-only `/api/auth/set-password` endpoint. `AccountKind` is separate from `Role`: speakers never gain board access from a role value.
 
-The options were: run a second Auth.js instance with `session: { strategy: "jwt" }` just for speakers (two cookie names, two configs to keep in sync), or skip the provider abstraction and create the database session ourselves. We did the second one — `lib/session.ts`'s `attachSpeakerSession()`:
-- Writes a `Session` row directly (`sessionToken`, `userId`, `expires` — same shape the Prisma adapter uses).
-- Sets the cookie **by hand**, matching Auth.js's own naming exactly: `authjs.session-token` over HTTP, `__Secure-authjs.session-token` over HTTPS (checked via the request's own protocol, same logic Auth.js uses internally — see `@auth/core`'s `defaultCookies()`).
+## Session contract
 
-Because the Session row and cookie are shaped identically to what the adapter itself would create, `auth()` reads a SPEAKER session exactly like a MEMBER one everywhere else in the app — every existing route that calls `auth()` and checks `session.user.*` needed zero changes to also work for speakers. If you ever touch this: the contract that matters is "a row in `Session` plus a correctly-named cookie holding its `sessionToken`." Don't let it drift from what `@auth/core` expects, or `auth()` silently stops recognizing these sessions.
-
-### Password hashing
-
-`lib/password.ts`, built on Node's built-in `crypto.scrypt` — no bcrypt/argon2 dependency. Stored as `scrypt:<salt-hex>:<hash-hex>`, timing-safe compare on verify. Temp passwords are 12 characters of `crypto.randomBytes`, base64url-encoded.
+`lib/session.ts` creates Auth.js-compatible database sessions directly because the Credentials provider does not support this application's database-session strategy. The session cookie is HttpOnly, SameSite=Lax, and Secure on HTTPS, using Auth.js's cookie name. The session response explicitly excludes password hashes and session tokens. Existing Auth.js CSRF-protected sign-out continues to work.
 
 ## Notifications + email routing
 
