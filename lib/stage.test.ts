@@ -86,6 +86,57 @@ describe("MCP tools per stage", () => {
     expect(names("BOARD").sort()).toEqual(names("MEMBER").sort());
   });
 
+  it("gives everyone their own notifications", () => {
+    for (const stage of ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"] as const) {
+      expect(names(stage), stage).toContain("my_notifications");
+      expect(names(stage), stage).toContain("mark_notification_read");
+    }
+  });
+
+  /** Checking in is a member act; a guest has nothing to check in to. */
+  it("keeps attendance to members and guests out of it", () => {
+    expect(names("MEMBER")).toContain("check_in");
+    expect(names("CANDIDATE")).not.toContain("check_in");
+    expect(names("SPEAKER")).not.toContain("check_in");
+  });
+
+  /** Guests set their own room needs; members have no submission to set. */
+  it("gives set_my_needs to guests only", () => {
+    expect(names("CANDIDATE")).toContain("set_my_needs");
+    expect(names("SPEAKER")).toContain("set_my_needs");
+    expect(names("MEMBER")).not.toContain("set_my_needs");
+    expect(names("EXEC_BOARD")).not.toContain("set_my_needs");
+  });
+
+  /**
+   * invite_guest mints a link that creates an account, and set_member_role
+   * hands out access. Neither may leak below exec while BOARD is on the
+   * member view.
+   */
+  it("keeps guest invites and role changes to exec", () => {
+    for (const tool of ["invite_guest", "list_members", "open_check_in", "event_attendance", "list_applications", "decide_on_application"]) {
+      expect(names("EXEC_BOARD"), tool).toContain(tool);
+      for (const stage of ["BOARD", "MEMBER", "CANDIDATE", "SPEAKER"] as const) {
+        expect(names(stage), `${tool} / ${stage}`).not.toContain(tool);
+      }
+    }
+  });
+
+  /** Strictly exec, never delegated to the wider board even later. */
+  it("reserves role changes and budgets for exec alone", () => {
+    for (const tool of ["set_member_role", "set_budget", "announce"]) {
+      expect(names("EXEC_BOARD"), tool).toContain(tool);
+      expect(names("BOARD"), tool).not.toContain(tool);
+    }
+  });
+
+  /** Issuing passwords is terminal-only on purpose — see scripts/. */
+  it("never exposes password issuance over MCP", () => {
+    for (const stage of ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"] as const) {
+      expect(names(stage).join(" "), stage).not.toMatch(/password/i);
+    }
+  });
+
   it("reserves announce for exec board", () => {
     expect(names("EXEC_BOARD")).toContain("announce");
     expect(names("BOARD")).not.toContain("announce");
