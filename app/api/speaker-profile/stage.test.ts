@@ -88,6 +88,29 @@ describe.skipIf(!process.env.DATABASE_URL)("talk details unlock on confirmation"
     expect((await patch({ slidesUrl: "https://example.com/deck" })).status).toBe(403);
   });
 
+  it("records the candidate's own confirmation of their windows", async () => {
+    const response = await patch({
+      availability: [{ startDate: "2026-11-05", endDate: "2026-11-07", startTime: "13:00", endTime: "17:00" }],
+      availabilityConfirmed: true,
+    });
+    expect(response.status).toBe(200);
+    const row = await prisma.speakerSubmission.findUnique({ where: { id: prefix } });
+    expect(row?.availabilityConfirmedAt).toBeInstanceOf(Date);
+  });
+
+  it("refuses to confirm an empty set of windows", async () => {
+    expect((await patch({ availability: [], availabilityConfirmed: true })).status).toBe(400);
+  });
+
+  // Otherwise the board reads "confirmed" against times that have moved.
+  it("clears the confirmation when the windows change", async () => {
+    await patch({
+      availability: [{ startDate: "2026-12-01", endDate: "2026-12-01", startTime: "10:00", endTime: "12:00" }],
+    });
+    const row = await prisma.speakerSubmission.findUnique({ where: { id: prefix } });
+    expect(row?.availabilityConfirmedAt).toBeNull();
+  });
+
   it("accepts both once the board confirms them", async () => {
     await prisma.speakerSubmission.update({ where: { id: prefix }, data: { status: "CONFIRMED" } });
     const response = await patch({ talkTitle: "Shipping real systems", slidesUrl: "https://example.com/deck" });

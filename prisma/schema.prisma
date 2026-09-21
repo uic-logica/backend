@@ -297,6 +297,13 @@ model SpeakerSubmission {
   slidesUrl String? // a link, not a file — so it opens on whatever machine is in the room
   eventId   String? @unique
 
+  // Two confirmations, in order. The candidate confirms their availability
+  // is final, which is the signal the board can act on; the board then
+  // confirms them (status = CONFIRMED), which promotes them to a speaker.
+  // Cleared whenever the windows change, so "confirmed" never describes
+  // times that have since moved.
+  availabilityConfirmedAt DateTime?
+
   event    Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
   user     User? // set once EXEC_BOARD invites this speaker to the portal — see AUTH.md
   messages SpeakerMessage[]

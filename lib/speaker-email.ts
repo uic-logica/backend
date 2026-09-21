@@ -10,8 +10,8 @@ export function speakerInviteEmail(username: string, tempPassword: string, confi
     ? "You're confirmed — sign in to LOGICA @ UIC"
     : "Let's find a date — sign in to LOGICA @ UIC";
   const opening = confirmed
-    ? "You're confirmed as a speaker with LOGICA @ UIC. Sign in to manage your availability and details."
-    : "Thanks for offering to speak at LOGICA @ UIC. Sign in to share when you're free so we can work out whether we can make it happen.";
+    ? "You're confirmed as a speaker with LOGICA @ UIC. Sign in to manage your talk details."
+    : "The LOGICA @ UIC board has set up an account for you. Sign in and tell us when you're free — that's all we need to work out whether we can make a date happen.";
   const text = `${opening}\n\nSign in at /speaker-signin with:\nUsername: ${username}\nTemporary password: ${tempPassword}\n\nYou'll be asked to set your own password the first time you sign in.\n`;
   const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px">
   <p style="margin:0 0 16px">${opening}</p>

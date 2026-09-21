@@ -21,6 +21,7 @@ const SELF_FIELDS = {
       note: true,
       status: true,
       submittedAt: true,
+      availabilityConfirmedAt: true,
       talkTitle: true,
       slidesUrl: true,
       event: { select: { id: true, title: true, startsAt: true, location: true } },
@@ -110,13 +111,33 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  // The candidate's own confirmation: "these windows are final, over to
+  // you". Changing the windows clears it, so the board never reads
+  // "confirmed" against times that have since moved.
+  const { availabilityConfirmed } = (payload ?? {}) as Record<string, unknown>;
+  if (availabilityConfirmed !== undefined && typeof availabilityConfirmed !== "boolean") {
+    return NextResponse.json({ error: "`availabilityConfirmed` must be a boolean." }, { status: 400 });
+  }
+  if (availabilityConfirmed === true && !availability?.length) {
+    return NextResponse.json(
+      { error: "Add at least one window before confirming." },
+      { status: 400 },
+    );
+  }
+  const availabilityConfirmedAt =
+    availabilityConfirmed === true
+      ? new Date()
+      : availabilityConfirmed === false || availability !== undefined
+        ? null
+        : undefined;
+
   // Submission update runs first: the user update's nested `speakerSubmission`
   // select below reads within the same transaction, so it only reflects
   // these changes if they've already landed by the time it runs.
   const [, user] = await prisma.$transaction([
     prisma.speakerSubmission.update({
       where: { id: current.speakerSubmissionId },
-      data: { organization, availability, needs, note, talkTitle, slidesUrl },
+      data: { organization, availability, needs, note, talkTitle, slidesUrl, availabilityConfirmedAt },
     }),
     prisma.user.update({
       where: { id: session.user.id },
