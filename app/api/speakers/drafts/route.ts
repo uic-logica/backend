@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { isBoardAccount } from "@/lib/authz";
+import { runsWorkspace } from "@/lib/authz";
 import { isVisitKind, mintInvite } from "@/lib/invite";
 import { prisma } from "@/lib/prisma";
 import { parseSpeakerFields } from "@/lib/speaker-submission";
@@ -18,8 +18,8 @@ import { parseSpeakerFields } from "@/lib/speaker-submission";
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!isBoardAccount(session.user)) {
-    return NextResponse.json({ error: "Only board members can create guest drafts." }, { status: 403 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can create guest drafts for now." }, { status: 403 });
   }
 
   let payload: unknown;

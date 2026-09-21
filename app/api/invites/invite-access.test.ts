@@ -17,8 +17,8 @@ const signedInAs = (user: Record<string, unknown>) =>
 
 /**
  * A guest link creates an account when it's clicked, so who can mint one is
- * the whole security boundary. All of these are refused before any database
- * call, so none of them needs a database.
+ * the whole security boundary. Exec only for now. All of these are refused
+ * before any database call, so none of them needs a database.
  */
 const boardOnly = [
   [
@@ -31,7 +31,7 @@ const boardOnly = [
   ],
 ] as const;
 
-describe.each(boardOnly)("%s is board-only", (_name, call) => {
+describe.each(boardOnly)("%s is exec-only", (_name, call) => {
   beforeEach(() => vi.mocked(auth).mockReset());
 
   it("rejects a signed-out request", async () => {
@@ -41,6 +41,16 @@ describe.each(boardOnly)("%s is board-only", (_name, call) => {
 
   it("rejects a plain MEMBER", async () => {
     signedInAs({ id: "u1", role: "MEMBER", accountKind: "MEMBER" });
+    expect((await call()).status).toBe(403);
+  });
+
+  /**
+   * BOARD is on the member view until that tier gets its own surface, so
+   * the guest directory is closed to them too — and closed server-side,
+   * not just missing from their sidebar. See runsWorkspace in lib/authz.
+   */
+  it("rejects a BOARD member, who is on the member view for now", async () => {
+    signedInAs({ id: "u9", role: "BOARD", accountKind: "MEMBER" });
     expect((await call()).status).toBe(403);
   });
 
@@ -97,7 +107,7 @@ describe("POST /api/speakers/drafts validation", () => {
   beforeEach(() => vi.mocked(auth).mockReset());
 
   it("rejects a kind that isn't one of the three", async () => {
-    signedInAs({ id: "u2", role: "BOARD", accountKind: "MEMBER" });
+    signedInAs({ id: "u2", role: "EXEC_BOARD", accountKind: "MEMBER" });
     const res = await drafts.POST(
       post("http://localhost/api/speakers/drafts", { name: "Ada", kind: "PANEL" }),
     );
@@ -106,7 +116,7 @@ describe("POST /api/speakers/drafts validation", () => {
   });
 
   it("rejects a non-JSON body", async () => {
-    signedInAs({ id: "u2", role: "BOARD", accountKind: "MEMBER" });
+    signedInAs({ id: "u2", role: "EXEC_BOARD", accountKind: "MEMBER" });
     const res = await drafts.POST(
       new NextRequest("http://localhost/api/speakers/drafts", { method: "POST", body: "not json" }),
     );

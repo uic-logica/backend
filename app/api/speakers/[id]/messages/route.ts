@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { runsWorkspace } from "@/lib/authz";
 import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
@@ -19,7 +19,7 @@ async function participant(submissionId: string) {
   if (!session?.user) return { error: "Not signed in.", status: 401 } as const;
 
   if (session.user.accountKind === "MEMBER") {
-    if (!hasRole(session.user.role, "BOARD")) {
+    if (!runsWorkspace(session.user)) {
       return { error: "Only board members can read speaker threads.", status: 403 } as const;
     }
     return { user: session.user, board: true } as const;

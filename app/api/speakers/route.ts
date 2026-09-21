@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { runsWorkspace } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
 import { parseFreshSubmission } from "@/lib/speaker-submission";
@@ -18,8 +18,8 @@ import { parseFreshSubmission } from "@/lib/speaker-submission";
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (session.user.accountKind !== "MEMBER" || !hasRole(session.user.role, "BOARD")) {
-    return NextResponse.json({ error: "Only board members can view speaker submissions." }, { status: 403 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can view guest submissions for now." }, { status: 403 });
   }
 
   const submissions = await prisma.speakerSubmission.findMany({

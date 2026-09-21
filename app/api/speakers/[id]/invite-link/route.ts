@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { isBoardAccount } from "@/lib/authz";
+import { runsWorkspace } from "@/lib/authz";
 import { mintInvite } from "@/lib/invite";
 import { prisma } from "@/lib/prisma";
 
@@ -16,8 +16,8 @@ import { prisma } from "@/lib/prisma";
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!isBoardAccount(session.user)) {
-    return NextResponse.json({ error: "Only board members can send guest links." }, { status: 403 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can send guest links for now." }, { status: 403 });
   }
 
   const { id } = await params;

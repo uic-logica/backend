@@ -25,6 +25,13 @@ export type Tool = {
   run: (input: Json, caller: Caller) => Promise<unknown>;
 };
 
+/**
+ * Who sees the club-running tools. Exec only for now — BOARD sees the
+ * member view until it gets its own surface, and an agent must not be a
+ * way around that. Mirrors runsWorkspace() in lib/authz.ts.
+ */
+const WORKSPACE: Stage[] = ["EXEC_BOARD"];
+
 const str = (d: string) => ({ type: "string", description: d });
 const none = { type: "object", properties: {}, additionalProperties: false };
 
@@ -372,7 +379,7 @@ export const TOOLS: Tool[] = [
     name: "list_guests",
     description:
       "Every speaker submission with its stage, so you can see who is waiting on a decision. Candidates who have confirmed their availability are the ones ready to decide on.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       properties: {
@@ -414,7 +421,7 @@ export const TOOLS: Tool[] = [
     name: "reply_to_guest",
     description:
       "Post a message into a candidate's or speaker's thread, as the board. Use list_guests for the submission id.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       required: ["submissionId", "body"],
@@ -447,7 +454,7 @@ export const TOOLS: Tool[] = [
     name: "decide_on_guest",
     description:
       "Confirm a candidate as a speaker, decline them, or move a speaker back to candidate. Confirming unlocks their talk details and event numbers.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       required: ["submissionId", "decision"],
@@ -488,7 +495,7 @@ export const TOOLS: Tool[] = [
     name: "schedule_guest",
     description:
       "Attach a scheduled event to a speaker's submission. This is what turns on the RSVP and check-in numbers on their own dashboard. Pass eventId null to unlink.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       required: ["submissionId"],
@@ -514,7 +521,7 @@ export const TOOLS: Tool[] = [
   {
     name: "create_event",
     description: "Put a new event on the LOGICA calendar.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       required: ["title", "startsAt"],
@@ -554,7 +561,7 @@ export const TOOLS: Tool[] = [
     name: "list_board_items",
     description:
       "List what the board is tracking — spending (MONEY) or companies and guests we're talking to (OUTREACH). Filter by stage, or by what's assigned to you.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       properties: {
@@ -621,7 +628,7 @@ export const TOOLS: Tool[] = [
     name: "add_board_item",
     description:
       "Track something new. MONEY for a cost the club is about to incur or has paid; OUTREACH for a company, speaker or partner we want to talk to. Amounts are whole cents.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       required: ["kind", "title"],
@@ -665,7 +672,7 @@ export const TOOLS: Tool[] = [
     name: "update_board_item",
     description:
       "Move something along — approve a spend, mark that a company replied, hand it to someone else, or set when the next move is due.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       required: ["id"],
@@ -721,7 +728,7 @@ export const TOOLS: Tool[] = [
     name: "budget_status",
     description:
       "What's left in the club's budget, what's waiting on approval, and who is owed money back out of their own pocket.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: none,
     run: async () => {
       const budgets = await prisma.budget.findMany({
@@ -799,7 +806,7 @@ export const TOOLS: Tool[] = [
     name: "club_insights",
     description:
       "How the club is actually doing: how many members, how many are still turning up, which events landed, and who comes to everything.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: none,
     run: async () => {
       const data = await clubInsights();
@@ -815,7 +822,7 @@ export const TOOLS: Tool[] = [
     name: "find_documents",
     description:
       "Search the club's Google Drive by file name — the constitution, budgets, decks, run-of-shows. Returns links, not file contents.",
-    stages: ["BOARD", "EXEC_BOARD"],
+    stages: WORKSPACE,
     inputSchema: {
       type: "object",
       properties: {

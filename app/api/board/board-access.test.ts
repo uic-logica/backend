@@ -47,7 +47,7 @@ const boardOnly = [
   ["GET /api/board/budgets", () => budgets.GET()],
 ] as const;
 
-describe.each(boardOnly)("%s is board-only", (_name, call) => {
+describe.each(boardOnly)("%s is exec-only", (_name, call) => {
   beforeEach(() => vi.mocked(auth).mockReset());
 
   it("rejects a signed-out request", async () => {
@@ -57,6 +57,17 @@ describe.each(boardOnly)("%s is board-only", (_name, call) => {
 
   it("rejects a plain MEMBER", async () => {
     signedInAs({ id: "u1", role: "MEMBER", accountKind: "MEMBER" });
+    expect((await call()).status).toBe(403);
+  });
+
+  /**
+   * BOARD sees the member view until that tier gets its own surface. The
+   * money, the roster and the pipeline are closed to them server-side, not
+   * merely absent from their sidebar. One edit to runsWorkspace in
+   * lib/authz.ts widens this, and this test is what will say so.
+   */
+  it("rejects a BOARD member, who is on the member view for now", async () => {
+    signedInAs({ id: "u9", role: "BOARD", accountKind: "MEMBER" });
     expect((await call()).status).toBe(403);
   });
 
