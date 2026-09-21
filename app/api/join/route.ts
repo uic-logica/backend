@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { isBoardAccount } from "@/lib/authz";
 import { parseApplication } from "@/lib/membership-application";
 import { prisma } from "@/lib/prisma";
 import { overAttemptLimit } from "@/lib/rate-limit";
@@ -9,7 +9,7 @@ import { overAttemptLimit } from "@/lib/rate-limit";
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!hasRole(session.user.role, "BOARD")) {
+  if (!isBoardAccount(session.user)) {
     return NextResponse.json({ error: "Only board members can see applications." }, { status: 403 });
   }
 
