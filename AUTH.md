@@ -1,77 +1,64 @@
 # Authentication
 
-## Member, board, and exec sign-in
+## Two account kinds, shared sessions
 
-All `accountKind: MEMBER` accounts now use their configured university email and an admin-issued generated password. `Role` still controls member/board/exec permissions; login cannot set or change it. No public account creation or email code login is enabled.
+`prisma/schema.prisma` separates `AccountKind` (MEMBER or SPEAKER) from `Role` (MEMBER, BOARD, EXEC_BOARD). `auth.ts` registers no sign-in providers and uses Auth.js database sessions. Password handlers create those sessions through `lib/session.ts`.
 
-- `POST /api/auth/member-login` accepts `{ email, password }`, normalizes the email, checks the exact `ALLOWED_EMAIL_DOMAIN`, and creates an Auth.js database session. Passwords are case-sensitive and are never trimmed. Invalid input, wrong passwords, and wrong account kinds never create sessions.
-- Ten attempts per address per 15-minute window, counted atomically in Postgres using the existing `SignInLimit` table. Limits persist across instances and restarts. Successful sign-in does not clear the counter. No schema migration is needed.
-- Passwords have 24 base64url characters (144 random bits) and are hashed using Node scrypt with a random salt. Only the hash is saved. Hash format validation rejects corrupt or empty hashes before comparison.
-- `POST /api/board/members/password` is restricted server-side to MEMBER accounts with EXEC_BOARD role. It accepts `{ email }`, generates a new credential, creates a MEMBER account if needed, and preserves existing roles. It rejects guest accounts and self-reset. The response reveals the password once with `Cache-Control: no-store`.
-- Issuance revokes all existing sessions and MCP tokens, and removes old email codes in the same transaction. Login and issuance use the same per-email transaction lock so a concurrent old-password login cannot survive a reset.
-- Deliver issued passwords privately after checking identity; users should store them in a password manager. There is no email delivery dependency. Lost passwords are reset by another exec, or a server administrator using the command below. Member-selected passwords are not enabled.
-- JSON content type and origin checks protect credential mutations. Set `FRONTEND_URL` to the exact public frontend origin (for example `https://club.example.edu`, without a trailing slash) when using the frontend API proxy. Locally set it to `http://localhost:3000`. If unset, only the request URL's own origin is accepted.
+`lib/password.ts` hashes passwords with salted Node scrypt. `lib/session.ts` creates a 30-day session and an HttpOnly, SameSite=Lax cookie, Secure for HTTPS. `auth.ts` explicitly selects session response fields; it does not return the password hash or session token.
 
-## Bootstrap and recovery
+## Members
 
-Before switching the frontend, issue credentials to at least one **existing exec account** from an interactive administrator terminal with the intended Logica `DATABASE_URL` and `ALLOWED_EMAIL_DOMAIN` loaded:
+`POST /api/auth/member-login` accepts `{ email, password }`. `lib/member-password.ts` normalizes the email and requires the exact configured `ALLOWED_EMAIL_DOMAIN`; an unset domain rejects member login. Passwords are case-sensitive and not trimmed. Login requires an existing MEMBER account with a valid password hash. It never creates an account or accepts a role.
 
-```sh
-npx tsx scripts/issue-member-password.ts existing-exec@uic.edu
-```
+The persistent `SignInLimit` counter permits ten attempts per email per 15-minute window. Login and issuance share a per-email Postgres transaction lock. `lib/password-request.ts` checks JSON content type and request origin for member login and credential issuance. Set `FRONTEND_URL` to the frontend's exact origin, without a trailing slash.
 
-This generates a password and displays it once. It never promotes accounts; a new email receives MEMBER access. Existing roles, profile data, memberships, and attendance remain intact. It refuses redirected output to reduce accidental credential logging. Do not run it against another project's database. Use the exec dashboard's Members section to provision/reset the remaining accounts. If delivery of a password fails, issue a fresh one; hashes cannot be reversed.
+### Issuance and recovery
 
-Deploy backend first, configure `FRONTEND_URL`, provision the exec, then deploy frontend. Existing sessions remain until expiration or credential issuance; each issued password revokes that user's sessions and MCP connections. No production data is modified by building or deploying the code itself.
+There are two entry points, both using `issueMemberPassword()`:
 
-## Passwordless archive
+- Server administrator: `npx tsx scripts/issue-member-password.ts member@uic.edu`, with the intended database and domain loaded. The script requires an interactive terminal and refuses redirected output.
+- Exec session: `POST /api/board/members/password` with `{ email }`. The route rejects guest accounts and self-reset, and returns the generated password once with `Cache-Control: no-store`.
 
-The prior provider and verification route are preserved in `archive/passwordless/` along with a restoration checklist. Auth.js has no registered sign-in providers, so old Nodemailer callback URLs cannot issue sessions. `/api/auth/otp/verify` returns 410. The archive is not compiled or routed. Keep the existing verification tables until the future auth decision is made. The development role-switcher `/api/dev/login` is also retired (404) so it cannot bypass password login.
+The generated password is 24 base64url characters. Only its hash is stored. Issuance preserves existing roles and creates new accounts as MEMBER. It revokes that user's sessions and MCP tokens and deletes old email verification tokens in the same transaction. It does not send email. Deliver credentials privately after verifying the recipient.
 
-## Speakers and guests
+There is no public member signup or member-selected password endpoint. The script does not promote a new account to exec. The paired frontend currently has **no member password form or issuance UI**: `src/app/signin/page.tsx` still calls the old code endpoints, and `src/components/dashboard/Members.tsx` only edits roles/officer titles. Do not describe the backend migration as a completed frontend login flow.
 
-Speaker/guest username + password sign-in remains at `/api/auth/speaker-login`; their invite and forced password-change flows are unchanged. MEMBER passwords cannot be changed through the speaker-only `/api/auth/set-password` endpoint. `AccountKind` is separate from `Role`: speakers never gain board access from a role value.
+## Guests
 
-## Session contract
+`POST /api/auth/speaker-login` accepts `{ username, password }` for SPEAKER accounts. The lookup also accepts email. No university domain is required. The username is trimmed/lowercased; the password is not. Its limiter is in-memory (`lib/rate-limit.ts`), unlike the member limiter.
 
-`lib/session.ts` creates Auth.js-compatible database sessions directly because the Credentials provider does not support this application's database-session strategy. The session cookie is HttpOnly, SameSite=Lax, and Secure on HTTPS, using Auth.js's cookie name. The session response explicitly excludes password hashes and session tokens. Existing Auth.js CSRF-protected sign-out continues to work.
+### Single-use invitation
 
-## Notifications + email routing
+Execs create a draft through `POST /api/speakers/drafts`, or replace an unused guest link through `POST /api/speakers/:id/invite-link`. Both use `runsWorkspace()`, which is exec-only today. The frontend's `Speakers.tsx` turns the returned token into `/invite/[token]`.
 
-`lib/notify.ts` is the one place anything "tell a user something" goes through:
+`lib/invite.ts` generates 256 random bits, stores only a SHA-256 hash, and expires the link after 14 days. Minting a replacement overwrites the previous hash. Lookup rejects unknown, expired, used, or already-account-linked invitations.
 
-- `notifyUser(userId, message, category)` — writes the in-app `Notification`, then emails the same message unless that `EmailPreference` category is off (`eventReminders` or `announcements`; missing preference row = on, matching the GET default).
-- `notifyEventGoing(eventId, message, category, exceptUserId?)` — same, fanned out to everyone `RSVP`'d `GOING` to that event.
+`POST /api/invites/claim` accepts the token, name, email, and a guest-chosen password of 10–200 characters. It refuses already-signed-in callers and emails already assigned to an account. Claiming consumes the invite and creates a linked SPEAKER account transactionally, then creates the session. The email normally becomes the username; a collision gets a generated fallback. No forced password change or email delivery is needed.
 
-Wired into three trigger points so far:
-1. `PATCH /api/speakers/:id` confirming/declining a submission → `notifyUser` (category `announcements`) if that submission has a linked portal account.
-2. `POST /api/events/:id/feed` (a note posted to an event) → `notifyEventGoing` (category `eventReminders`), excluding the poster.
-3. `POST /api/events/:id/materials` with `visibility: "PUBLIC"` → `notifyEventGoing` (category `eventReminders`).
+### Older emailed invitation
 
-ponytail: fire-and-forget, no retry queue — a failed email is logged (`console.error`) and the in-app notification stays either way. No automatic reminders (e.g. "event tomorrow") — that needs a scheduled job, and nothing in this stack runs one yet; add a cron trigger calling `notifyEventGoing` when that's actually needed, don't build the scheduler speculatively.
+`POST /api/speakers/:id/invite` still exists. It is exec-only and requires a submitted, non-declined submission without an account. It creates a username and temporary password, sets `mustChangePassword`, then emails the credentials. The successful response also returns the temporary password once.
 
-## File uploads: resumes and event materials
+The frontend sends these guests to `/speaker-signin/set-password`. `POST /api/auth/set-password` requires a SPEAKER session, the current password, and a new password of at least eight characters. It clears `mustChangePassword`. This route cannot change a MEMBER password.
 
-Both stored as `Bytes` columns directly in Postgres via `lib/upload.ts`'s `parseUpload()` — a shared `{ filename, mimeType, data: <base64> }` JSON shape, not multipart/form-data (every other endpoint in this app is already JSON; a form-data parser for one feature isn't worth it). Size-capped (resumes 5MB, event materials 15MB) since they land in the database.
+The public speaker intake (`POST /api/speakers`) and old `/speak/[id]` completion flow create/update submissions, not accounts. Guest accounts require an invitation.
 
-- **Resumes** — any signed-in user, `POST/DELETE /api/profile/resume`, downloaded via `GET /api/resume/:userId` (self, or board+ reviewing who's signed up). One resume per user, referenced through their RSVPs — not stored per-event, since a person's resume doesn't change per event they attend.
-- **Event materials** — board+ only to upload (`POST /api/events/:id/materials`), with a `visibility: "PUBLIC" | "INTERNAL"` field. `GET /api/events/:id/materials` filters to `PUBLIC` for anyone who isn't board (including signed-out requests — public materials are meant to be public); `GET /api/materials/:id/download` enforces the same split.
+## Roles and guest stages
 
-ponytail: Postgres, not object storage — fine at the current scale (a handful of small PDFs/slide decks). Move to Vercel Blob or S3 if files get large or numerous; nothing else in the stack currently handles file uploads at all, so this was the smallest thing that could actually ship rather than a placeholder waiting on new infra.
+`lib/authz.ts` has separate account-aware board and exec predicates. `runsWorkspace()` is currently `isExecAccount()`. `lib/board-guard.ts` applies that gate to the workspace routes: budgets, items, roster, insights, documents, and credential issuance. BOARD gets the member dashboard and MCP tools for now. `Officer` is a display preference used by the frontend's `BoardHome.tsx`, not an access grant.
 
-## Event feed
+This workspace switch does not rewrite every older API's permissions. For example, event creation in `app/api/events/route.ts` still checks BOARD/EXEC_BOARD role directly. Read each handler's guard; do not assume every endpoint uses `runsWorkspace()`.
 
-`Post` gained a nullable `eventId` — a post with one set is that event's feed instead of the general one. Same model, same shape, `GET/POST /api/events/:id/feed` mirror the general `/api/posts` routes. No separate model, no new permissions: same "any signed-in user" rule as the general feed.
+`lib/stage.ts` treats a SPEAKER account as SPEAKER only when its submission is CONFIRMED; other statuses are CANDIDATE. Role never promotes a guest into the workspace. `app/api/speaker-profile/route.ts` allows availability edits but rejects candidate edits to talk title/slides. Changing availability clears its confirmation unless the same request confirms the replacement windows. A linked Event supplies talk attendance and RSVP counts.
 
-## Public events + scheduled reminders + the admin directory
+## MCP credentials
 
-Three more pieces, same pass:
+`app/api/mcp/route.ts` authenticates bearer tokens through `lib/mcp-token.ts`. Tokens are stored as SHA-256 hashes and resolve the caller's current stage on every request. Both tool discovery and invocation enforce stage access.
 
-- **`GET /api/events` and `GET /api/events/:id` are public now** — no auth required. They were board-gated before, which meant `/events` (a public marketing page) 401'd for every signed-out visitor. Events have no sensitive fields (title/description/location/time), so there was no reason for the gate. `POST /api/events` (create) is still board+ only.
-- **`GET /api/speakers` includes the linked portal account** (`user: { id, username, linkedin, resumeFilename }`) when one exists — this is what the admin speaker directory reads to show LinkedIn/resume alongside each submission.
-- **Scheduled reminders**: `app/api/cron/event-reminders` + `vercel.json`. Vercel Cron hits it daily; it reminds everyone `RSVP`'d `GOING` to anything starting in the next 24h, once per event (`Event.remindedAt`). Protected by `CRON_SECRET` (set on Vercel; unset locally skips the check — see `.env.example`). ponytail: daily cron + 24h window means "reminded sometime the day before," not an exact offset — tighten later if that precision matters. No new infra: Vercel Cron is a native platform feature, not a new dependency.
+There are **23 registered tools** in `lib/mcp-tools.ts`. None can issue or reset a password; credential recovery stays in the script and exec HTTP endpoint. `lib/stage.test.ts` verifies stage filtering and BOARD/member parity. It does not contain a dedicated assertion banning password tools.
 
-## What still needs building
+## Retired paths
 
-- **Frontend for the admin directory** — `GET /api/speakers` now returns everything the page needs (contact info, status, LinkedIn, resume, draft state), but there's no `/admin/speakers`-style page yet to browse/confirm/decline/invite from.
-- Everything else already listed above (resume/materials/feed UI) is now built — see the frontend PRs.
+`POST /api/auth/otp/verify` returns 410. `GET /api/dev/login` returns 404. Tests beside both handlers check the retirement. With `providers: []` in `auth.ts`, the old Nodemailer provider is not registered. Passwordless source remains under `archive/passwordless/`; it is not an active sign-in system.
+
+The paired frontend's `/signin` still advertises passwordless login and calls those retired paths. That is an integration bug, not a supported alternative.
