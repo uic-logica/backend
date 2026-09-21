@@ -4,8 +4,9 @@ import { hashPassword } from "@/lib/password";
 import { attachSpeakerSession } from "@/lib/session";
 
 /**
- * Dev-only view switcher: `GET /api/dev/login?as=member|board|speaker`
- * provisions a fake account and signs it in, then bounces to /dashboard.
+ * Dev-only view switcher: `GET /api/dev/login?as=<role>` provisions a fake
+ * account and signs it in, then bounces to /dashboard. One per stage, so
+ * all five dashboards can be compared in a few clicks.
  *
  * Exists because the two real sign-in paths are both slow to drive by hand
  * during UI work — MEMBER needs an emailed OTP, SPEAKER needs a password —
@@ -14,8 +15,12 @@ import { attachSpeakerSession } from "@/lib/session";
  */
 const accounts = {
   member: { id: "qa-member", email: "qa.member@uic.edu", name: "QA Member", role: "MEMBER" },
-  board: { id: "qa-exec", email: "qa.exec@uic.edu", name: "QA Exec Board", role: "EXEC_BOARD" },
-  speaker: { id: "qa-speaker", email: "qa.speaker@example.com", name: "QA Guest Speaker" },
+  board: { id: "qa-board", email: "qa.board@uic.edu", name: "QA Board", role: "BOARD" },
+  exec: { id: "qa-exec", email: "qa.exec@uic.edu", name: "QA Exec Board", role: "EXEC_BOARD" },
+  // Candidate and speaker are the same account either side of the board's
+  // decision, so the switcher sets the submission status to match.
+  candidate: { id: "qa-speaker", email: "qa.speaker@example.com", name: "QA Guest Speaker", status: "PENDING" },
+  speaker: { id: "qa-speaker", email: "qa.speaker@example.com", name: "QA Guest Speaker", status: "CONFIRMED" },
 } as const;
 
 export async function GET(request: NextRequest) {
@@ -31,8 +36,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (as === "speaker") {
-    const { id, email, name } = accounts.speaker;
+  if (as === "speaker" || as === "candidate") {
+    const { id, email, name, status } = accounts[as];
     await prisma.speakerSubmission.upsert({
       where: { id: "qa-speaker-submission" },
       create: {
@@ -40,13 +45,13 @@ export async function GET(request: NextRequest) {
         name,
         email,
         organization: "Example Labs (Test)",
-        status: "CONFIRMED",
+        status,
         submittedAt: new Date(),
         publicOptIn: false,
         needs: "Projector and HDMI cable",
         note: "Fictional account for dashboard testing.",
       },
-      update: {},
+      update: { status },
     });
     await prisma.user.upsert({
       where: { id },

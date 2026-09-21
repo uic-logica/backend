@@ -60,6 +60,30 @@ model User {
   emailPreference   EmailPreference?
   uploadedMaterials EventMaterial[]
   speakerMessages   SpeakerMessage[]
+  mcpTokens         McpToken[]
+}
+
+/**
+ * A bearer token letting someone's AI agent act as them over MCP
+ * (app/api/mcp). Scoped to nothing of its own — every request resolves the
+ * user and re-derives what they're allowed to do, so a token can never
+ * outrank the person who made it.
+ * Stored as sha256, not scrypt: the secret is 256 bits of CSPRNG output,
+ * so there's nothing to brute-force, and this is checked on every single
+ * tool call.
+ */
+model McpToken {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Required by @auth/prisma-adapter — do not rename fields.
