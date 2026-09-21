@@ -19,6 +19,8 @@ const SELF_FIELDS = {
       availability: true,
       needs: true,
       note: true,
+      status: true,
+      submittedAt: true,
       talkTitle: true,
       slidesUrl: true,
       event: { select: { id: true, title: true, startsAt: true, location: true } },
@@ -88,9 +90,24 @@ export async function PATCH(request: NextRequest) {
   }
   const { organization, availability, needs, note, talkTitle, slidesUrl } = submissionFields.data;
 
-  const current = await prisma.user.findUnique({ where: { id: session.user.id } });
+  const current = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { speakerSubmissionId: true, speakerSubmission: { select: { status: true } } },
+  });
   if (!current?.speakerSubmissionId) {
     return NextResponse.json({ error: "No linked submission on file." }, { status: 409 });
+  }
+
+  // Two stages. A candidate is still being considered: they can tell us when
+  // they're free and talk to the board, and that's the point — we can't ask
+  // anyone to prepare a talk we haven't agreed to yet. Talk details unlock
+  // when the board confirms them. Enforced here, not just hidden in the UI.
+  const confirmed = current.speakerSubmission?.status === "CONFIRMED";
+  if (!confirmed && (talkTitle !== undefined || slidesUrl !== undefined)) {
+    return NextResponse.json(
+      { error: "Talk details unlock once the board confirms your visit." },
+      { status: 403 },
+    );
   }
 
   // Submission update runs first: the user update's nested `speakerSubmission`
