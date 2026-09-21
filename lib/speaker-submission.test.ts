@@ -118,3 +118,36 @@ describe("parseCompletion", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("parseSpeakerFields — talk", () => {
+  it("accepts a talk title and an https slides link", () => {
+    const result = parseSpeakerFields({
+      talkTitle: "  Shipping real systems  ",
+      slidesUrl: "https://docs.google.com/presentation/d/abc/edit",
+    });
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        talkTitle: "Shipping real systems",
+        slidesUrl: "https://docs.google.com/presentation/d/abc/edit",
+      },
+    });
+  });
+
+  it("lets an empty slides link clear the field", () => {
+    const result = parseSpeakerFields({ slidesUrl: "   " });
+    expect(result).toEqual({ ok: true, data: { slidesUrl: "" } });
+  });
+
+  // This value ends up in an href, so a non-http scheme must never survive.
+  it.each(["javascript:alert(1)", "data:text/html,<script>", "slides.com/deck"])(
+    "rejects %s as a slides link",
+    (slidesUrl) => {
+      expect(parseSpeakerFields({ slidesUrl }).ok).toBe(false);
+    },
+  );
+
+  it("rejects a talk title longer than 200 characters", () => {
+    expect(parseSpeakerFields({ talkTitle: "x".repeat(201) }).ok).toBe(false);
+  });
+});

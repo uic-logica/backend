@@ -6,9 +6,15 @@ import { prisma } from "@/lib/prisma";
 import { speakerInviteEmail } from "@/lib/speaker-email";
 
 /**
- * EXEC_BOARD only — turns a confirmed speaker submission into a SPEAKER
- * account: generates a username + one-time temp password, emails it, and
- * links the account back to the submission. See AUTH.md.
+ * EXEC_BOARD only — turns a submission into a SPEAKER account: generates a
+ * username + one-time temp password, emails it, and links the account back
+ * to the submission. See AUTH.md.
+ *
+ * Deliberately available before the board confirms anyone. A pending
+ * submission is a *candidate*: they get in to share availability and talk
+ * to us while we work out whether a date is possible. What the account can
+ * actually do is gated by `status`, not by whether it exists — see
+ * app/api/speaker-profile.
  */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -20,8 +26,11 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const submission = await prisma.speakerSubmission.findUnique({ where: { id }, include: { user: true } });
   if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  if (submission.status !== "CONFIRMED") {
-    return NextResponse.json({ error: "Only confirmed speakers can be invited." }, { status: 409 });
+  if (!submission.submittedAt) {
+    return NextResponse.json({ error: "This draft hasn't been submitted yet." }, { status: 409 });
+  }
+  if (submission.status === "DECLINED") {
+    return NextResponse.json({ error: "This submission was declined." }, { status: 409 });
   }
   if (submission.user) {
     return NextResponse.json({ error: "This speaker already has a portal account." }, { status: 409 });
@@ -52,7 +61,11 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     },
   });
 
-  const { subject, text, html } = speakerInviteEmail(username, tempPassword);
+  const { subject, text, html } = speakerInviteEmail(
+    username,
+    tempPassword,
+    submission.status === "CONFIRMED",
+  );
   await sendMail({ to: submission.email, subject, text, html });
 
   // Temp password returned once as a fallback if the email doesn't land —
