@@ -275,9 +275,11 @@ model SignInLimit {
 }
 
 enum ApplicationTrack {
+  // GENERAL and MENTORSHIP are historical values with production rows; do not remove them.
   GENERAL
   SOFTWARE_ENGINEER
   MENTORSHIP
+  BOARD_MEMBER
 }
 
 enum ApplicationStatus {
