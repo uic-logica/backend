@@ -4,7 +4,7 @@ import { isStatus, parseApplication } from "./membership-application";
 const VALID = {
   name: "Ada Lovelace",
   email: "Ada@UIC.edu",
-  track: "MENTORSHIP",
+  track: "SOFTWARE_ENGINEER",
   major: "CS",
   gradYear: 2028,
   why: "I want to learn.",

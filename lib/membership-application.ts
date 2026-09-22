@@ -1,7 +1,8 @@
 import type { ApplicationStatus, ApplicationTrack } from "@prisma/client";
 import { isAllowedEmail } from "./otp";
 
-export const TRACKS = ["GENERAL", "SOFTWARE_ENGINEER", "MENTORSHIP"] as const satisfies readonly ApplicationTrack[];
+// ApplicationTrack is every stored value; TRACKS is what new public applications accept.
+export const TRACKS = ["SOFTWARE_ENGINEER", "BOARD_MEMBER"] as const satisfies readonly ApplicationTrack[];
 export const STATUSES = ["PENDING", "INTERVIEW", "ACCEPTED", "DECLINED"] as const satisfies readonly ApplicationStatus[];
 
 const MAX_SHORT = 100;
@@ -36,7 +37,7 @@ export function parseApplication(payload: unknown): ParseResult {
   if (typeof email !== "string" || !isAllowedEmail(email)) {
     return { ok: false, error: "`email` must be your UIC email." };
   }
-  if (typeof track !== "string" || !TRACKS.includes(track as ApplicationTrack)) {
+  if (typeof track !== "string" || !TRACKS.includes(track as (typeof TRACKS)[number])) {
     return { ok: false, error: `\`track\` must be one of: ${TRACKS.join(", ")}.` };
   }
   if (typeof why !== "string" || !why.trim() || why.length > MAX_WHY) {
