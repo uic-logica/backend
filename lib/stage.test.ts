@@ -50,7 +50,7 @@ describe("MCP tools per stage", () => {
   });
 
   it("keeps the guest pipeline to exec", () => {
-    for (const tool of ["list_guests", "decide_on_guest", "schedule_guest", "create_event"]) {
+    for (const tool of ["list_guests", "common_slots", "decide_on_guest", "schedule_guest", "create_event"]) {
       expect(names("EXEC_BOARD"), tool).toContain(tool);
       for (const stage of ["BOARD", "MEMBER", "CANDIDATE", "SPEAKER"] as const) {
         expect(names(stage), `${tool} / ${stage}`).not.toContain(tool);

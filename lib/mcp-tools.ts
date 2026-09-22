@@ -1,7 +1,7 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
-import { parseSpeakerFields } from "@/lib/speaker-submission";
+import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
 import { type Stage, STAGE_LABELS, runsTheClub } from "@/lib/stage";
 import {
@@ -417,6 +417,54 @@ export const TOOLS: Tool[] = [
         slidesUrl: s.slidesUrl,
         scheduledEvent: s.event,
       }));
+    },
+  },
+  {
+    name: "common_slots",
+    description:
+      "When two or more guests are all free at once — the overlap of their availability windows, the same thing the calendar grid shows a person. Pass submission ids from list_guests. An empty list means there is no time that works for everyone.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      required: ["guestIds"],
+      properties: {
+        guestIds: {
+          type: "array",
+          description: "Submission ids to intersect, from list_guests.",
+          items: str("A submission id"),
+        },
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const ids = Array.isArray(input.guestIds) ? input.guestIds.map(String) : fail("`guestIds` must be a list of submission ids.");
+      if (ids.length === 0) fail("Give at least one submission id.");
+      const rows = await prisma.speakerSubmission.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, availability: true, availabilityConfirmedAt: true },
+      });
+      const missing = ids.filter((id) => !rows.some((r) => r.id === id));
+      if (missing.length) fail(`No submission with id ${missing.join(", ")}.`);
+
+      const guests = rows.map((r) => {
+        const parsed = parseSpeakerFields({ availability: r.availability ?? [] });
+        return {
+          id: r.id,
+          name: r.name,
+          // Unconfirmed windows still count — they are the best guess we have,
+          // and the caller is told which ones are not final yet.
+          confirmed: r.availabilityConfirmedAt !== null,
+          windows: parsed.ok ? (parsed.data.availability ?? []) : ([] as AvailabilityWindow[]),
+        };
+      });
+      const shared = commonAvailability(guests.map((g) => g.windows));
+      return {
+        guests: guests.map(({ windows, ...g }) => ({ ...g, windowCount: windows.length })),
+        shared,
+        note: shared.length
+          ? "Times are Chicago local. Use schedule_guest once you pick one."
+          : "Nothing overlaps — ask someone in their thread for more windows (reply_to_guest).",
+      };
     },
   },
   {
