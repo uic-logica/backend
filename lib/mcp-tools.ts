@@ -1142,7 +1142,7 @@ export const TOOLS: Tool[] = [
       properties: {
         id: str("Their user id, from list_members."),
         role: str("MEMBER, BOARD or EXEC_BOARD."),
-        officer: str("PRESIDENT, TREASURER, SECRETARY, OUTREACH, OTHER, or empty to clear."),
+        officer: str("PRESIDENT, VICE_PRESIDENT, TREASURER, SECRETARY, OUTREACH, OTHER, or empty to clear."),
       },
       additionalProperties: false,
     },
@@ -1166,8 +1166,8 @@ export const TOOLS: Tool[] = [
       if (input.officer !== undefined) {
         const officer = String(input.officer).toUpperCase();
         if (officer === "") data.officer = null;
-        else if (!["PRESIDENT", "TREASURER", "SECRETARY", "OUTREACH", "OTHER"].includes(officer)) {
-          fail("`officer` must be PRESIDENT, TREASURER, SECRETARY, OUTREACH, OTHER, or empty.");
+        else if (!["PRESIDENT", "VICE_PRESIDENT", "TREASURER", "SECRETARY", "OUTREACH", "OTHER"].includes(officer)) {
+          fail("`officer` must be PRESIDENT, VICE_PRESIDENT, TREASURER, SECRETARY, OUTREACH, OTHER, or empty.");
         } else data.officer = officer;
       }
       if (Object.keys(data).length === 0) fail("Pass `role`, `officer`, or both.");
