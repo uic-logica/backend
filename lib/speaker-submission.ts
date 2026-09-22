@@ -148,3 +148,45 @@ export function parseCompletion(
   }
   return parsed;
 }
+
+/**
+ * Where two windows overlap — same shape in, same shape out, or null when
+ * they never coincide. Dates and times are both plain strings, so `max` and
+ * `min` are just string comparisons.
+ */
+function overlap(a: AvailabilityWindow, b: AvailabilityWindow): AvailabilityWindow | null {
+  const startDate = a.startDate > b.startDate ? a.startDate : b.startDate;
+  const endDate = a.endDate < b.endDate ? a.endDate : b.endDate;
+  const startTime = a.startTime > b.startTime ? a.startTime : b.startTime;
+  const endTime = a.endTime < b.endTime ? a.endTime : b.endTime;
+  if (startDate > endDate || startTime >= endTime) return null;
+  return { startDate, endDate, startTime, endTime };
+}
+
+/**
+ * When everyone is free at once. Pairwise intersection folded across the
+ * group — one empty list means nobody has a common slot, which is the
+ * answer, not an error.
+ *
+ * logica-lean: returns the raw intersections without merging adjacent ones
+ * (Mon–Tue 9–10 and Wed 9–10 stay two rows) — revisit if a board member
+ * complains about the list being long.
+ */
+export function commonAvailability(everyones: AvailabilityWindow[][]): AvailabilityWindow[] {
+  if (everyones.length === 0) return [];
+  return everyones.reduce((shared, theirs) => {
+    const next: AvailabilityWindow[] = [];
+    const seen = new Set<string>();
+    for (const a of shared) {
+      for (const b of theirs) {
+        const both = overlap(a, b);
+        const key = both && `${both.startDate}/${both.endDate}/${both.startTime}/${both.endTime}`;
+        if (both && key && !seen.has(key)) {
+          seen.add(key);
+          next.push(both);
+        }
+      }
+    }
+    return next;
+  });
+}

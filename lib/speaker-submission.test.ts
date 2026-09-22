@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSpeakerFields, parseFreshSubmission, parseCompletion } from "./speaker-submission";
+import { commonAvailability, parseSpeakerFields, parseFreshSubmission, parseCompletion } from "./speaker-submission";
 
 const WINDOW = { startDate: "2026-10-01", endDate: "2026-10-03", startTime: "14:00", endTime: "16:00" };
 
@@ -149,5 +149,50 @@ describe("parseSpeakerFields — talk", () => {
 
   it("rejects a talk title longer than 200 characters", () => {
     expect(parseSpeakerFields({ talkTitle: "x".repeat(201) }).ok).toBe(false);
+  });
+});
+
+describe("commonAvailability", () => {
+  const w = (startDate: string, endDate: string, startTime: string, endTime: string) => ({
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+  });
+
+  it("returns one person's own windows unchanged", () => {
+    const mine = [w("2026-10-05", "2026-10-09", "09:00", "17:00")];
+    expect(commonAvailability([mine])).toEqual(mine);
+  });
+
+  it("clips to the days and hours everyone shares", () => {
+    expect(
+      commonAvailability([
+        [w("2026-10-05", "2026-10-09", "09:00", "17:00")],
+        [w("2026-10-07", "2026-10-12", "13:00", "20:00")],
+      ]),
+    ).toEqual([w("2026-10-07", "2026-10-09", "13:00", "17:00")]);
+  });
+
+  it("is empty when the hours never touch", () => {
+    expect(
+      commonAvailability([
+        [w("2026-10-05", "2026-10-09", "09:00", "12:00")],
+        [w("2026-10-05", "2026-10-09", "13:00", "17:00")],
+      ]),
+    ).toEqual([]);
+  });
+
+  it("keeps every window that survives, across three people", () => {
+    const shared = commonAvailability([
+      [w("2026-10-05", "2026-10-09", "09:00", "17:00"), w("2026-10-12", "2026-10-12", "09:00", "11:00")],
+      [w("2026-10-05", "2026-10-14", "10:00", "16:00")],
+      [w("2026-10-06", "2026-10-13", "10:00", "11:00")],
+    ]);
+    expect(shared).toEqual([w("2026-10-06", "2026-10-09", "10:00", "11:00"), w("2026-10-12", "2026-10-12", "10:00", "11:00")]);
+  });
+
+  it("has no common slot when nobody was given", () => {
+    expect(commonAvailability([])).toEqual([]);
   });
 });
