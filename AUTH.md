@@ -21,7 +21,11 @@ There are two entry points, both using `issueMemberPassword()`:
 
 The generated password is 24 base64url characters. Only its hash is stored. Issuance preserves existing roles and creates new accounts as MEMBER. It revokes that user's sessions and MCP tokens and deletes old email verification tokens in the same transaction. It does not send email. Deliver credentials privately after verifying the recipient.
 
-There is no public member signup or member-selected password endpoint. The script does not promote a new account to exec. The paired frontend currently has **no member password form or issuance UI**: `src/app/signin/page.tsx` still calls the old code endpoints, and `src/components/dashboard/Members.tsx` only edits roles/officer titles. Do not describe the backend migration as a completed frontend login flow.
+`POST /api/auth/signup` is the public member signup route. Signed-out callers provide a name, an address in `ALLOWED_EMAIL_DOMAIN`, and a 10–200 character password; the password rules come from `passwordProblem()` in `lib/invite.ts`, so signup and invite claim cannot drift apart. It always creates MEMBER accounts with the MEMBER role and starts a session. It rejects a caller who already has one. Requests are limited to five attempts per normalized email per hour, and the existence check runs under the same per-email advisory lock as login and issuance.
+
+An address that already has an account gets a 409 naming that fact. **This is an account enumeration oracle for university addresses, accepted deliberately.** The generic-response alternative does not work here: a new account is signed in, so its response carries `Set-Cookie` and the refusal does not, which distinguishes the two anyway — and it strands a returning member on a success screen with no session. If this ever has to genuinely hide, the only honest form is to stop creating the session in this route so both paths return a bare `{ ok: true }` and everyone signs in afterwards.
+
+The script does not promote a new account to exec. The paired frontend provides signup and member-password login forms, but `src/components/dashboard/Members.tsx` still has no issuance UI.
 
 ## Guests
 
