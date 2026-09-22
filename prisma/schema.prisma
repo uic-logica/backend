@@ -479,7 +479,7 @@ model BoardItem {
   lastTouchAt  DateTime?
 
   eventId     String? // the visit, talk or workshop this belongs to
-  createdById String
+  createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -487,7 +487,8 @@ model BoardItem {
   owner          User?   @relation("BoardItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   paidBy         User?   @relation("BoardItemPaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
   stageChangedBy User?   @relation("BoardItemStager", fields: [stageChangedById], references: [id], onDelete: SetNull)
-  createdBy      User    @relation("BoardItemAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+  // Public inquiries have no author; SetNull also preserves pipeline history when a board member leaves.
+  createdBy      User?   @relation("BoardItemAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   event          Event?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
   @@index([kind, stage])
