@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { isBoardAccount } from "@/lib/authz";
 import { CHECK_IN_CODE_MINUTES, generateCheckInCode } from "@/lib/check-in";
 import { prisma } from "@/lib/prisma";
 
@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(_request: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!hasRole(session.user.role, "BOARD")) {
+  if (!isBoardAccount(session.user)) {
     return NextResponse.json({ error: "Only board members can see check-in codes." }, { status: 403 });
   }
 
@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 export async function POST(_request: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!hasRole(session.user.role, "BOARD")) {
+  if (!isBoardAccount(session.user)) {
     return NextResponse.json({ error: "Only board members can open check-in." }, { status: 403 });
   }
 
