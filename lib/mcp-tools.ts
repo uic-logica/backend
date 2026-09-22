@@ -12,6 +12,8 @@ import {
   validStage,
 } from "@/lib/board-item";
 import { clubInsights } from "@/lib/insights";
+import { mintInvite, isVisitKind, VISIT_NOUN } from "@/lib/invite";
+import { CHECK_IN_CODE_MINUTES, checkCode, generateCheckInCode, normalizeCheckInCode } from "@/lib/check-in";
 import { driveConfigured, FOLDER_MIME, listFolder, searchFiles } from "@/lib/drive";
 
 type Json = Record<string, unknown>;
@@ -844,6 +846,481 @@ export const TOOLS: Tool[] = [
         owner: file.owners?.[0]?.displayName ?? null,
         folderId: file.mimeType === FOLDER_MIME ? file.id : null,
       }));
+    },
+  },
+
+
+  // ---- Everyone: what the platform is telling you ---------------------
+  {
+    name: "my_notifications",
+    description:
+      "Your LOGICA notifications, newest first — event reminders, board decisions, announcements. Says which are unread.",
+    stages: ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      properties: { unreadOnly: { type: "boolean", description: "Only the ones you haven't read." } },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const rows = await prisma.notification.findMany({
+        where: { userId: caller.id, ...(input.unreadOnly === true ? { readAt: null } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return {
+        unread: rows.filter((n) => !n.readAt).length,
+        notifications: rows.map((n) => ({ id: n.id, message: n.message, at: n.createdAt, read: n.readAt !== null })),
+      };
+    },
+  },
+  {
+    name: "mark_notification_read",
+    description: "Mark one of your notifications as read, or all of them.",
+    stages: ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: str("The notification's id. Leave out and set all:true to clear everything."),
+        all: { type: "boolean", description: "Mark every unread notification read." },
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      if (input.all === true) {
+        // Scoped to the caller — a notification id alone must never be
+        // enough to touch someone else's row.
+        const r = await prisma.notification.updateMany({
+          where: { userId: caller.id, readAt: null },
+          data: { readAt: new Date() },
+        });
+        return { markedRead: r.count };
+      }
+      const id = String(input.id ?? "").trim();
+      if (!id) fail("Pass an `id`, or `all: true`.");
+      const r = await prisma.notification.updateMany({
+        where: { id, userId: caller.id },
+        data: { readAt: new Date() },
+      });
+      if (r.count === 0) fail("No unread notification of yours with that id.");
+      return { markedRead: r.count };
+    },
+  },
+
+  // ---- Members: turning up, and the feed -------------------------------
+  {
+    name: "check_in",
+    description:
+      "Check in to an event you're at, using the code the organiser puts up. This is what counts as attendance — an RSVP on its own doesn't.",
+    stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["code"],
+      properties: { code: str("The check-in code shown at the event.") },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const submitted = String(input.code ?? "").trim();
+      if (!submitted) fail("`code` is required.");
+      // Same normalisation the door flow uses, so "abc-234" matches "ABC234".
+      const row = await prisma.checkInCode.findFirst({
+        where: { code: normalizeCheckInCode(submitted) },
+        include: { event: { select: { id: true, title: true, startsAt: true } } },
+      });
+      const verdict = checkCode(row, submitted);
+      if (verdict !== "ok") {
+        fail(
+          verdict === "expired"
+            ? "That code has expired — ask the organiser to open check-in again."
+            : "That code isn't valid. Check it, or ask the organiser.",
+        );
+      }
+      if (!row) fail("That code isn't valid.");
+      const existing = await prisma.attendance.findUnique({
+        where: { eventId_userId: { eventId: row.eventId, userId: caller.id } },
+      });
+      if (existing) return { alreadyCheckedIn: true, event: row.event.title, at: existing.checkedInAt };
+      await prisma.attendance.create({ data: { eventId: row.eventId, userId: caller.id } });
+      return { checkedIn: true, event: row.event.title, startsAt: row.event.startsAt };
+    },
+  },
+  {
+    name: "my_engagement",
+    description: "How involved you've been: events attended, posts made, forms submitted.",
+    stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: none,
+    run: async (_input, caller) => {
+      const [attended, posts, submissions, recent] = await Promise.all([
+        prisma.attendance.count({ where: { userId: caller.id } }),
+        prisma.post.count({ where: { authorId: caller.id } }),
+        prisma.submission.count({ where: { userId: caller.id } }),
+        prisma.attendance.findMany({
+          where: { userId: caller.id },
+          orderBy: { checkedInAt: "desc" },
+          take: 5,
+          select: { checkedInAt: true, event: { select: { title: true } } },
+        }),
+      ]);
+      return {
+        eventsAttended: attended,
+        postsMade: posts,
+        formsSubmitted: submissions,
+        recentlyAttended: recent.map((a) => ({ event: a.event.title, at: a.checkedInAt })),
+      };
+    },
+  },
+  {
+    name: "read_feed",
+    description: "The club's community feed, newest first.",
+    stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: none,
+    run: async () => {
+      const posts = await prisma.post.findMany({
+        where: { eventId: null },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        include: { author: { select: { name: true } } },
+      });
+      return posts.map((p) => ({ by: p.author.name, body: p.body, at: p.createdAt }));
+    },
+  },
+  {
+    name: "post_to_feed",
+    description: "Post to the club's community feed. Everyone signed in can read it.",
+    stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["body"],
+      properties: { body: str("What to post.") },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const body = String(input.body ?? "").trim();
+      if (!body) fail("`body` is required.");
+      if (body.length > 2000) fail("Posts are limited to 2000 characters.");
+      const post = await prisma.post.create({ data: { authorId: caller.id, body } });
+      return { id: post.id, at: post.createdAt };
+    },
+  },
+
+  // ---- Guests: the bit set_talk doesn't cover --------------------------
+  {
+    name: "set_my_needs",
+    description:
+      "What you need in the room — projector, HDMI, a mic, dietary requirements, anything. Also takes a note for the board.",
+    stages: ["CANDIDATE", "SPEAKER"],
+    inputSchema: {
+      type: "object",
+      properties: {
+        needs: str("Equipment or setup you need. Replaces whatever is on file."),
+        note: str("Anything else the board should know."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const s = await submissionOf(caller);
+      if (input.needs === undefined && input.note === undefined) fail("Pass `needs`, `note`, or both.");
+      const updated = await prisma.speakerSubmission.update({
+        where: { id: s.id },
+        data: {
+          ...(input.needs === undefined ? {} : { needs: String(input.needs).slice(0, 2000) }),
+          ...(input.note === undefined ? {} : { note: String(input.note).slice(0, 2000) }),
+        },
+      });
+      return { needs: updated.needs, note: updated.note, visit: VISIT_NOUN[updated.kind] };
+    },
+  },
+
+  // ---- Exec: bringing guests in ----------------------------------------
+  {
+    name: "invite_guest",
+    description:
+      "Start a guest and get a single-use sign-up link to send them. They click it, pick an email and a password, and they're in their own dashboard — no second step from you. Returns the link ONCE; it can't be recovered, only replaced.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: str("Their name, if you know it."),
+        email: str("Their email, if you know it. They can change it."),
+        organization: str("Where they're from."),
+        referredBy: str("Who put us on to them."),
+        kind: str("What we're asking for: TALK, WORKSHOP or COMPANY_VISIT. Defaults to TALK."),
+        submissionId: str("An existing guest's id, to replace their link instead of creating a new guest."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const { secret, ...invite } = mintInvite();
+
+      if (input.submissionId) {
+        const id = String(input.submissionId);
+        const existing = await prisma.speakerSubmission.findUnique({
+          where: { id },
+          select: { id: true, name: true, user: { select: { id: true } } },
+        });
+        if (!existing) fail("No guest with that id.");
+        if (existing.user) fail("They already have an account — a new link would have nothing to do.");
+        await prisma.speakerSubmission.update({ where: { id }, data: invite });
+        return {
+          submissionId: id,
+          name: existing.name,
+          inviteToken: secret,
+          expiresAt: invite.inviteExpiresAt,
+          note: "The previous link stopped working. Send this one instead.",
+        };
+      }
+
+      const kind = input.kind === undefined ? "TALK" : String(input.kind).toUpperCase();
+      if (!isVisitKind(kind)) fail("`kind` must be TALK, WORKSHOP or COMPANY_VISIT.");
+      const parsed = parseSpeakerFields({
+        name: input.name,
+        email: input.email,
+        organization: input.organization,
+        referredBy: input.referredBy,
+      });
+      if (!parsed.ok) fail(parsed.error);
+
+      const draft = await prisma.speakerSubmission.create({ data: { ...parsed.data, kind, ...invite } });
+      return {
+        submissionId: draft.id,
+        name: draft.name,
+        kind,
+        inviteToken: secret,
+        expiresAt: invite.inviteExpiresAt,
+        note: "Build the link as <site>/invite/<inviteToken> and send it. Shown once — only a hash is stored.",
+      };
+    },
+  },
+
+  // ---- Exec: the club's people -----------------------------------------
+  {
+    name: "list_members",
+    description:
+      "The club roster: who's here, what they study, how much they've turned up, and what they are on the board.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        search: str("Filter by name, email or major."),
+        boardOnly: { type: "boolean", description: "Only board and exec." },
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const q = input.search === undefined ? "" : String(input.search).trim();
+      const rows = await prisma.user.findMany({
+        where: {
+          accountKind: "MEMBER",
+          ...(input.boardOnly === true ? { NOT: { role: "MEMBER" } } : {}),
+          ...(q
+            ? {
+                OR: [
+                  { name: { contains: q, mode: "insensitive" } },
+                  { email: { contains: q, mode: "insensitive" } },
+                  { major: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ role: "desc" }, { name: "asc" }],
+        take: 200,
+        select: {
+          id: true, name: true, email: true, role: true, officer: true,
+          major: true, gradYear: true, _count: { select: { attendances: true } },
+        },
+      });
+      return rows.map(({ _count, ...m }) => ({ ...m, eventsAttended: _count.attendances }));
+    },
+  },
+  {
+    name: "set_member_role",
+    description:
+      "Change what someone is on the board. Role decides access; officer only decides what gets pinned on their dashboard.",
+    stages: ["EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: str("Their user id, from list_members."),
+        role: str("MEMBER, BOARD or EXEC_BOARD."),
+        officer: str("PRESIDENT, TREASURER, SECRETARY, OUTREACH, OTHER, or empty to clear."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const id = String(input.id ?? "").trim();
+      if (!id) fail("`id` is required.");
+      const target = await prisma.user.findUnique({ where: { id }, select: { id: true, accountKind: true } });
+      if (!target || target.accountKind !== "MEMBER") fail("No member with that id.");
+
+      const data: Record<string, unknown> = {};
+      if (input.role !== undefined) {
+        const role = String(input.role).toUpperCase();
+        if (!["MEMBER", "BOARD", "EXEC_BOARD"].includes(role)) fail("`role` must be MEMBER, BOARD or EXEC_BOARD.");
+        // Same guard as the HTTP route: nobody removes themselves from the
+        // only seat that can put them back.
+        if (id === caller.id && role !== "EXEC_BOARD") {
+          fail("You can't take yourself off the exec board — ask another exec.");
+        }
+        data.role = role;
+      }
+      if (input.officer !== undefined) {
+        const officer = String(input.officer).toUpperCase();
+        if (officer === "") data.officer = null;
+        else if (!["PRESIDENT", "TREASURER", "SECRETARY", "OUTREACH", "OTHER"].includes(officer)) {
+          fail("`officer` must be PRESIDENT, TREASURER, SECRETARY, OUTREACH, OTHER, or empty.");
+        } else data.officer = officer;
+      }
+      if (Object.keys(data).length === 0) fail("Pass `role`, `officer`, or both.");
+
+      const updated = await prisma.user.update({
+        where: { id },
+        data,
+        select: { id: true, name: true, email: true, role: true, officer: true },
+      });
+      return updated;
+    },
+  },
+
+  // ---- Exec: money and events ------------------------------------------
+  {
+    name: "set_budget",
+    description:
+      "Create a budget for a term. Costs filed against it draw it down; what's left is worked out on the fly, never stored.",
+    stages: ["EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["label", "amountCents", "startsAt", "endsAt"],
+      properties: {
+        label: str('What to call it, e.g. "Fall 2026".'),
+        amountCents: { type: "integer", description: "Whole cents. $4,000 is 400000." },
+        startsAt: str("When the term starts, ISO 8601 or YYYY-MM-DD."),
+        endsAt: str("When it ends."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const label = String(input.label ?? "").trim();
+      if (!label) fail("`label` is required.");
+      const amountCents = Number(input.amountCents);
+      if (!Number.isInteger(amountCents) || amountCents < 0) fail("`amountCents` must be whole cents, not negative.");
+      const startsAt = new Date(String(input.startsAt ?? ""));
+      const endsAt = new Date(String(input.endsAt ?? ""));
+      if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) fail("Dates must be ISO 8601 or YYYY-MM-DD.");
+      if (endsAt <= startsAt) fail("The term has to end after it starts.");
+      const b = await prisma.budget.create({ data: { label: label.slice(0, 120), amountCents, startsAt, endsAt } });
+      return { id: b.id, label: b.label, total: money(b.amountCents), startsAt: b.startsAt, endsAt: b.endsAt };
+    },
+  },
+  {
+    name: "open_check_in",
+    description:
+      "Open check-in for an event and get the code to read out. Members use it with check_in; that's what counts as attendance.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      required: ["eventId"],
+      properties: { eventId: str("The event's id, from list_events.") },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const eventId = String(input.eventId ?? "").trim();
+      const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, title: true } });
+      if (!event) fail("No event with that id.");
+      const code = generateCheckInCode();
+      const expiresAt = new Date(Date.now() + CHECK_IN_CODE_MINUTES * 60 * 1000);
+      await prisma.checkInCode.upsert({
+        where: { eventId },
+        create: { eventId, code, expiresAt },
+        update: { code, expiresAt },
+      });
+      return { event: event.title, code, expiresAt, note: "Read this out at the event. It expires on its own." };
+    },
+  },
+  {
+    name: "event_attendance",
+    description: "Who said they were coming to an event and who actually turned up.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      required: ["eventId"],
+      properties: { eventId: str("The event's id.") },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const eventId = String(input.eventId ?? "").trim();
+      const event = await prisma.event.findUnique({ where: { id: eventId }, select: { title: true } });
+      if (!event) fail("No event with that id.");
+      const [going, came] = await Promise.all([
+        prisma.rsvp.findMany({
+          where: { eventId, status: "GOING" },
+          select: { user: { select: { name: true, email: true } } },
+        }),
+        prisma.attendance.findMany({
+          where: { eventId },
+          select: { checkedInAt: true, user: { select: { name: true, email: true } } },
+        }),
+      ]);
+      const cameEmails = new Set(came.map((a) => a.user.email));
+      return {
+        event: event.title,
+        saidTheydCome: going.length,
+        turnedUp: came.length,
+        showRate: going.length ? Math.round((came.length / going.length) * 100) : null,
+        noShows: going.filter((r) => !cameEmails.has(r.user.email)).map((r) => r.user.name ?? r.user.email),
+        attendees: came.map((a) => ({ who: a.user.name ?? a.user.email, at: a.checkedInAt })),
+      };
+    },
+  },
+
+  // ---- Exec: people asking to join --------------------------------------
+  {
+    name: "list_applications",
+    description: "People who applied to join the club, and where each one got to.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      properties: { pendingOnly: { type: "boolean", description: "Only the ones nobody has decided on." } },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const rows = await prisma.membershipApplication.findMany({
+        where: input.pendingOnly === true ? { status: "PENDING" } : {},
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      });
+      return rows.map((a) => ({
+        id: a.id, name: a.name, email: a.email, track: a.track,
+        major: a.major, gradYear: a.gradYear, why: a.why, status: a.status, at: a.createdAt,
+      }));
+    },
+  },
+  {
+    name: "decide_on_application",
+    description: "Accept, decline, or move a membership application to interview.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      required: ["id", "decision"],
+      properties: {
+        id: str("The application's id, from list_applications."),
+        decision: str("PENDING, INTERVIEW, ACCEPTED or DECLINED."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const id = String(input.id ?? "").trim();
+      const decision = String(input.decision ?? "").toUpperCase();
+      if (!["PENDING", "INTERVIEW", "ACCEPTED", "DECLINED"].includes(decision)) {
+        fail("`decision` must be PENDING, INTERVIEW, ACCEPTED or DECLINED.");
+      }
+      const existing = await prisma.membershipApplication.findUnique({ where: { id }, select: { id: true } });
+      if (!existing) fail("No application with that id.");
+      const updated = await prisma.membershipApplication.update({
+        where: { id },
+        data: { status: decision as "PENDING" | "INTERVIEW" | "ACCEPTED" | "DECLINED" },
+        select: { id: true, name: true, email: true, status: true },
+      });
+      return updated;
     },
   },
 
