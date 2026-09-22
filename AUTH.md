@@ -55,7 +55,7 @@ This workspace switch does not rewrite every older API's permissions. For exampl
 
 `app/api/mcp/route.ts` authenticates bearer tokens through `lib/mcp-token.ts`. Tokens are stored as SHA-256 hashes and resolve the caller's current stage on every request. Both tool discovery and invocation enforce stage access.
 
-There are **23 registered tools** in `lib/mcp-tools.ts`. None can issue or reset a password; credential recovery stays in the script and exec HTTP endpoint. `lib/stage.test.ts` verifies stage filtering and BOARD/member parity. It does not contain a dedicated assertion banning password tools.
+There are **38 registered tools** in `lib/mcp-tools.ts`. None can issue or reset a password; credential recovery stays in the script and the exec HTTP endpoint. `lib/stage.test.ts` verifies stage filtering and BOARD/member parity, and asserts that no tool name matches `/password/i` at any stage — so an agent cannot mint a credential even if someone adds a tool that tries to.
 
 ## Retired paths
 
