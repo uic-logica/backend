@@ -8,40 +8,29 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## LOGICA @ UIC workflow
+## Work from the implementation
 
-Follows [CONTRIBUTING.md](https://github.com/uic-logica/.github/blob/main/CONTRIBUTING.md) and [ROADMAP.md](https://github.com/uic-logica/.github/blob/main/ROADMAP.md). Claude Code gets these as `/logica-*` skills from the `uic-logica/skills` marketplace; this is the same content for Codex, Cursor, or anyone else reading `AGENTS.md`.
+Read the affected route, its `lib/` helpers, and `prisma/schema.prisma` before changing behavior. Markdown and code comments can describe older plans. `package.json` declares the stack; `.github/workflows/ci.yml` defines checks.
 
-### Opening a PR
-- Never push straight to `main` — branch protection blocks it. `git checkout -b <name>/<short-description>`.
-- Run `npm run lint` and `npx tsc --noEmit` before pushing — CI runs the same checks.
-- Every PR links a `roadmap`-labeled tracking issue (`gh issue list --label roadmap`); file one first if it doesn't exist.
-- PR body: 1-3 bullet summary, `Closes #<issue>`, a test plan. Don't self-merge — one approval + passing lint required.
+- Import the shared client from `lib/prisma.ts`. Ship schema changes with a migration in `prisma/migrations/`.
+- Use account-aware checks in `lib/authz.ts`. `runsWorkspace()` is EXEC_BOARD-only; BOARD has the member workspace view. `Officer` grants no permissions.
+- Start workspace handlers with `requireBoard()` from `lib/board-guard.ts`. Keep server-side authorization even when the frontend hides controls.
+- Reuse `lib/board-item.ts`: MONEY and OUTREACH share `BoardItem`, stage validation, and budget rollups. Do not add a parallel company/expense model for the same data.
+- Read `AUTH.md` and the actual auth handlers before touching credentials. Member passwords are issued through the script or exec endpoint; guest invites can accept a guest-chosen password. Do not restore OTP or the dev login bypass incidentally.
+- Keep password issuance/reset out of MCP. Update the registry and stage tests together when changing tools. Count `TOOLS` in `lib/mcp-tools.ts`, not a number copied from an old plan.
+- Drive is read-only in `lib/drive.ts`; missing configuration is an explicit empty state, not a reason to add fixtures.
+- Keep env files and credentials out of commits. `.gitignore` permits only `.env.example` among env files.
 
-### Reviewing a diff
-- No secrets staged (`.env*` beyond `.env.example`), no scope creep past the linked issue.
-- **Role checks happen server-side**, not just hidden behind a frontend button — a `MEMBER` request should never reach what only `BOARD`/`EXEC_BOARD` can do.
-- **Every schema change ships a migration** (`prisma/migrations/...`) — no hand-edited database assumptions.
-- **Prisma client only from `lib/prisma.ts`** — never `new PrismaClient()` inline, that exhausts connections in dev.
-- Auth/session logic untouched unless the PR is specifically about auth — it's shared infrastructure.
+## Checks
 
-### Writing tests
-- Use whatever runner is already configured (check `package.json` scripts, existing `*.test.*` files) — ask before adding a new one.
-- Scope the test to the change, not exhaustive coverage.
-- Test handler functions directly (import + call with a constructed request) rather than a real HTTP server, unless the PR is about request/response wiring.
-- If the code touches the DB, test against the real schema shape — use a real/test database or Prisma's mock client, not a hand-rolled fake that can drift from `prisma/schema.prisma`.
-- Role checks need a "wrong role gets rejected" test case.
+Use the existing Vitest runner (`npm test`, `vitest.config.ts`). Route tests import handlers directly; `lib/stage.test.ts` covers tool permissions. Include wrong-account/wrong-role cases for permission changes. Do not add another test runner.
 
-### Filing issues
-- Title: `[Step N] ...` for a roadmap step, `[Addition] ...` for an Additions-list item, plain title otherwise.
-- Reuse existing labels (`gh label list -R uic-logica/backend`) — roadmap issues get `roadmap` + `backend` + `enhancement` (skip `enhancement` for foundational work).
-- Body links the roadmap step/section and ends with a concrete "done when" line.
+Before pushing, run `npm run lint` and `npx tsc --noEmit`. Generate the client first with `npx prisma generate`. CI also runs migrations, `npm test`, and `npm run build`, against its own Postgres service. Use a dedicated test database for DB-backed tests; inspect their skip conditions. Never point tests or migrations at an unrelated database.
 
-### Keeping it lean
-1. Does this need to exist yet, or is it ahead of the current roadmap step?
-2. Check `prisma/schema.prisma` before a new data structure, parallel source of truth, or cache.
-3. Reuse `lib/` (especially `lib/prisma.ts`) before writing new plumbing.
-4. Can it be one line?
-5. Only then, the minimum new code that works.
+Build with `npm run build` so Prisma generation precedes Next. Migrations are separate: `prisma.config.ts` reads `DATABASE_URL`; override it for the migration connection rather than adding `directUrl`.
 
-Mark deliberate shortcuts inline: `// logica-lean: <ceiling> — revisit if <trigger>`. Never simplify away role checks or input validation at API boundaries.
+## Branches and PRs
+
+Work on `<name>/<short-description>`, not `main`; keep an already-supplied task branch. Open a PR against `main` with 1–3 summary bullets, the linked tracking issue (`Closes #<issue>` when completed), and a test plan. Do not self-merge. `.github/CODEOWNERS` assigns review to `@uic-logica/maintainers`; do not claim a particular approval count from that file.
+
+Link a roadmap-labeled tracking issue; reuse an existing one or file one for the task. Keep changes within its scope. Prefer the current helpers and Node APIs to new plumbing or dependencies. Preserve input validation and authorization when simplifying. Existing deliberate deferrals use `// logica-lean: <ceiling> — revisit if <trigger>`.

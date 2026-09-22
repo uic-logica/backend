@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { hasRole } from "@/lib/authz";
+import { isBoardAccount } from "@/lib/authz";
 import { STATUSES, isStatus } from "@/lib/membership-application";
 import { prisma } from "@/lib/prisma";
 
@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!hasRole(session.user.role, "BOARD")) {
+  if (!isBoardAccount(session.user)) {
     return NextResponse.json({ error: "Only board members can update applications." }, { status: 403 });
   }
 

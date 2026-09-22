@@ -1,7 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 /**
- * Password hashing for SPEAKER accounts (see AUTH.md). Uses Node's built-in
+ * Password hashing for member and speaker accounts (see AUTH.md). Uses Node's built-in
  * scrypt rather than pulling in bcrypt/argon2 — one well-understood KDF
  * already in the standard library, no new dependency.
  *
@@ -17,6 +17,7 @@ export function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
+  if (!/^scrypt:[a-f0-9]{32}:[a-f0-9]{128}$/.test(stored)) return false;
   const parts = stored.split(":");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
   const [, saltHex, hashHex] = parts;
@@ -44,4 +45,9 @@ export function slugifyUsername(name: string | null | undefined, email: string):
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "");
   return base || "speaker";
+}
+
+/** Member credentials: 144 bits of randomness, URL-safe and password-manager friendly. */
+export function generateMemberPassword(): string {
+  return randomBytes(18).toString("base64url");
 }

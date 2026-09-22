@@ -12,7 +12,7 @@ enum Role {
   EXEC_BOARD
 }
 
-// MEMBER accounts sign in passwordless (UIC .edu OTP, see auth.ts) and Role
+// MEMBER accounts sign in with issued passwords (see AUTH.md) and Role
 // governs what they can do. SPEAKER accounts sign in with a username +
 // password instead (no .edu required) and Role is meaningless for them —
 // see AUTH.md for the full design and why these are two separate systems.
@@ -46,10 +46,10 @@ model User {
   gradYear      Int?
   createdAt     DateTime  @default(now())
 
-  // --- SPEAKER accounts only (accountKind = SPEAKER) — see AUTH.md ---
+  // Authentication for both account kinds; username is speaker-only.
   accountKind         AccountKind        @default(MEMBER)
   username            String?            @unique
-  passwordHash        String? // scrypt, see lib/password.ts — never set for MEMBER accounts
+  passwordHash        String? // scrypt, see lib/password.ts
   mustChangePassword  Boolean            @default(false)
   linkedin            String?
   // Resume — any signed-in user (MEMBER or SPEAKER) can attach one via
