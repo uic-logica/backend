@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
  * showed up. This is also where an item's owner comes from, so it's board-
  * readable — but changing someone's role or officer title is exec only.
  */
-const OFFICERS: Officer[] = ["PRESIDENT", "TREASURER", "SECRETARY", "OUTREACH", "OTHER"];
+const OFFICERS: Officer[] = ["PRESIDENT", "VICE_PRESIDENT", "TREASURER", "SECRETARY", "OUTREACH", "OTHER"];
 const ROLES: Role[] = ["MEMBER", "BOARD", "EXEC_BOARD"];
 
 export async function GET(request: NextRequest) {

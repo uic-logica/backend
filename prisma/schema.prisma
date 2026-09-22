@@ -27,6 +27,7 @@ enum AccountKind {
 // Officer is just "which of this do you look at first".
 enum Officer {
   PRESIDENT
+  VICE_PRESIDENT
   TREASURER
   SECRETARY
   OUTREACH
