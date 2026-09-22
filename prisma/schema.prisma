@@ -182,6 +182,8 @@ model Event {
   title       String
   description String?
   location    String?
+  // The one public URL for an event: a Luma page, a Discord invite, or a flyer.
+  link        String?
   startsAt    DateTime
   createdAt   DateTime  @default(now())
   remindedAt  DateTime? // set once the cron job (app/api/cron/event-reminders) has notified GOING rsvps
@@ -193,6 +195,13 @@ model Event {
   materials   EventMaterial[]
   speaker     SpeakerSubmission?
   boardItems  BoardItem[]
+}
+
+// Capture-only list for later export to LOGICA's existing mailing list; this is not a mail or campaign system.
+model Subscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
 }
 
 enum RsvpStatus {
@@ -275,9 +284,11 @@ model SignInLimit {
 }
 
 enum ApplicationTrack {
+  // GENERAL and MENTORSHIP are historical values with production rows; do not remove them.
   GENERAL
   SOFTWARE_ENGINEER
   MENTORSHIP
+  BOARD_MEMBER
 }
 
 enum ApplicationStatus {
