@@ -8,6 +8,10 @@ const VALID = {
   major: "CS",
   gradYear: 2028,
   why: "I want to learn.",
+  github: "ada",
+  hoursPerWeek: 10,
+  projects: ["OPPORTUNITY_BOARD"],
+  skills: "TypeScript",
 };
 
 describe("parseApplication", () => {

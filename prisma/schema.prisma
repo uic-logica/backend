@@ -299,20 +299,33 @@ enum ApplicationStatus {
   DECLINED
 }
 
-// Membership applications from the /join page (#27). Public submit, board review.
-// Not tied to a User: applicants may not have signed in yet.
+enum TeamProject {
+  OPPORTUNITY_BOARD
+  RESUME_BUILDER
+  EVENT_REPLAYS
+  MOCK_INTERVIEWER
+}
+
+// Membership applications from the /join page (#27). Board review remains
+// shared; build-team rows record the signed-in user's id without a relation.
 model MembershipApplication {
-  id        String            @id @default(cuid())
-  name      String
-  email     String
-  track     ApplicationTrack
-  major     String?
-  gradYear  Int?
-  why       String
-  status    ApplicationStatus @default(PENDING)
-  createdAt DateTime          @default(now())
+  id           String            @id @default(cuid())
+  name         String
+  email        String
+  track        ApplicationTrack
+  major        String?
+  gradYear     Int?
+  why          String
+  github       String?
+  hoursPerWeek Int?
+  projects     TeamProject[]     @default([])
+  skills       String?
+  userId       String?
+  status       ApplicationStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
 
   @@index([email])
+  @@index([userId])
 }
 
 // What a guest is coming to do. The pipeline is identical either way —

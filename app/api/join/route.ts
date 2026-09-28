@@ -18,7 +18,8 @@ export async function GET() {
 }
 
 /**
- * Public, no sign-in: submits a membership application from /join.
+ * Submits an application from /join. Board applications are public; build
+ * team applications use the signed-in member's UIC identity.
  *
  * logica-lean: limited per email, in memory, and one open application per
  * email and track. That doesn't stop someone cycling through made-up UIC
@@ -30,6 +31,21 @@ export async function POST(request: NextRequest) {
     payload = await request.json();
   } catch {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
+  }
+
+  const body = (payload ?? {}) as Record<string, unknown>;
+  let userId: string | undefined;
+  if (body.track === "SOFTWARE_ENGINEER") {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Sign in with your UIC account to apply to a build team." }, { status: 401 });
+    }
+    const sessionEmail = session.user.email;
+    if (!sessionEmail?.toLowerCase().endsWith("@uic.edu")) {
+      return NextResponse.json({ error: "Build team applications need a @uic.edu account." }, { status: 403 });
+    }
+    payload = { ...body, email: sessionEmail };
+    userId = session.user.id;
   }
 
   const parsed = parseApplication(payload);
@@ -48,6 +64,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "You already have an application in for this track." }, { status: 409 });
   }
 
-  const application = await prisma.membershipApplication.create({ data: parsed.data });
+  const application = await prisma.membershipApplication.create({
+    data: userId ? { ...parsed.data, userId } : parsed.data,
+  });
   return NextResponse.json({ id: application.id }, { status: 201 });
 }
