@@ -1,56 +1,106 @@
-# LOGICA @ UIC — backend
+# LOGICA @ UIC backend
 
-Next.js 16 App Router API for the LOGICA frontend. Prisma 7 and Postgres hold accounts, sessions, events, participation, guest visits, and the exec workspace. Dependencies and commands live in `package.json`; the data model is `prisma/schema.prisma`.
+> **Owner:** [@nicolasrufino](https://github.com/nicolasrufino) · **Last reviewed:** Sep 29, 2026 · **Audience:** Members and recruiters · **Type:** Landing page
 
-## Local setup
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs)](https://nextjs.org/) [![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma)](https://www.prisma.io/) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql)](https://supabase.com/) [![Vercel](https://img.shields.io/badge/Vercel-logica__backend-000000?logo=vercel)](https://logica-backend.vercel.app)
 
-1. `npm ci`.
-2. Copy `.env.example` to `.env`. Prisma CLI and the admin script load it through `dotenv/config`; Next.js also reads it. Set `DATABASE_URL`, `AUTH_SECRET`, `ALLOWED_EMAIL_DOMAIN`, and `FRONTEND_URL`.
-3. Run `npx prisma generate`, then `npx prisma migrate deploy` against your development database to apply the checked-in migrations.
-4. `npm run dev` starts the API on port 3001. The frontend proxies `/api/*` from port 3000.
+This is the Next.js 16 App Router API for [LOGICA @ UIC](https://github.com/uic-logica), a University of Illinois Chicago student organization supporting Latinx and underrepresented students in computing. [Nicolas Rufino](https://github.com/nicolasrufino), software lead, owns every product, sets deadlines, and reviews and merges changes.
 
-SMTP is for notifications and the older emailed guest invitation, not member sign-in. Its settings are in `.env.example`. Read [AUTH.md](AUTH.md) before provisioning accounts.
+The repository is public for recruiters and the community to read. Contributions are limited to members of the `uic-logica` GitHub organization. Org-wide plans, contribution rules, and team pages live in the [organization `.github` repository](https://github.com/uic-logica/.github); do not duplicate them here.
 
-## Where things are
+Production runs on Vercel as `logica_backend` with Postgres on Supabase. The [frontend](https://github.com/uic-logica/frontend) proxies `/api/*` requests to this service.
 
-- `auth.ts`, `app/api/auth/`, `lib/session.ts` — password login with Auth.js database sessions. Members use email and an issued password; guests use username or email and password. No public member signup. The old OTP endpoint returns 410.
-- `scripts/issue-member-password.ts`, `lib/member-password.ts`, `app/api/board/members/password/route.ts` — member credential issuance and recovery. The script preserves roles; it does not bootstrap an exec role.
-- `lib/authz.ts`, `lib/board-guard.ts` — workspace access is **MEMBER account + EXEC_BOARD role**. BOARD gets the member workspace view. Do not infer permissions from comments saying “board+”; read the handler's actual guard.
-- `app/api/board/` — budgets, money/outreach items, member roster and role/officer edits, insights, and Drive documents. Every route starts with the shared guard, including credential issuance after its request-origin check.
-- `lib/board-item.ts` — MONEY and OUTREACH are two kinds of one `BoardItem` table. Amounts are whole cents; stages are validated strings. Budget balances are computed from non-archived items. DELETE archives an item; PATCH can restore it. Stage changes record who moved it and when.
-- `lib/insights.ts` — member counts, 90-day check-in activity, latest 20 events with RSVP/attendance counts, top attendees, and guest/application status totals.
-- `app/api/speakers/`, `lib/invite.ts`, `app/api/invites/` — public intake, exec review, single-use account invitations, and the older draft-completion and emailed-account paths. `VisitKind` is TALK, WORKSHOP, or COMPANY_VISIT. A submission can link to one scheduled Event.
-- `app/api/speaker-profile/route.ts` — guests edit availability; confirmed guests can edit talk title and slides URL. Linked events supply RSVP/check-in/feed counts.
-- `app/api/events/` — public event list/detail, RSVP, event feed, materials, and check-in administration. `app/api/attendance/checkin/route.ts` requires both event ID and code.
-- `app/api/dashboard/route.ts` — the session user's engagement counts, RSVPs, and latest 20 attendance/post/form records per category.
-- `app/api/join/route.ts` — public membership applications, separate from account creation. The paired frontend's `/join` currently uses email instead of this API.
-- `lib/prisma.ts` — shared database client. Reuse it.
+```mermaid
+flowchart LR
+  U[Browser] --> F[uic-logica/frontend]
+  F -->|/api/* proxy| B[logica_backend<br/>Next.js API routes]
+  B --> P[(Supabase Postgres)]
+```
 
-## MCP
+## Authentication
 
-`lib/mcp-tools.ts` registers **23 tools**. `toolsFor()` filters by the caller's stage; `app/api/mcp/route.ts` checks the stage again on every tool call. `lib/mcp-token.ts` derives it from the live user and guest submission, so changing a role changes token access.
+Members can create an account with `POST /api/auth/signup` using an address allowed by `ALLOWED_EMAIL_DOMAIN`, then sign in through `POST /api/auth/member-login`. Password handlers create Auth.js database sessions manually in `lib/session.ts`; sessions last 30 days. The old passwordless implementation is archived in `archive/passwordless/` and is not active. See [AUTH.md](AUTH.md).
 
-BOARD has the same toolset as MEMBER. Workspace tools are exec-only. No registered tool issues or resets passwords. Keep credential issuance outside MCP. Stage filtering is covered by `lib/stage.test.ts`; this checkout has no dedicated password-tool exclusion test.
+```mermaid
+sequenceDiagram
+  participant M as Member
+  participant API as Backend
+  participant DB as Postgres
+  M->>API: POST /api/auth/signup or /member-login
+  API->>API: Validate JSON, origin, domain, password
+  API->>DB: Create or verify MEMBER account
+  API->>DB: Create 30-day Session
+  API-->>M: HttpOnly Auth.js session cookie
+```
 
-## Vercel and Supabase configuration
+For local signup, `ALLOWED_EMAIL_DOMAIN` must be a real domain such as `uic.edu`; `*` matches nothing. `FRONTEND_URL` must exactly match the frontend origin because password endpoints enforce request origin.
 
-Use `npm run build`: `package.json` runs `prisma generate && next build`. It does **not** apply migrations. For the Supabase deployment, apply `prisma/migrations/` manually through the session pooler by overriding `DATABASE_URL` for `npx prisma migrate deploy`. Keep the runtime connection separate from that command's override.
+## API access
 
-`prisma.config.ts` reads only `DATABASE_URL`. Do not add `directUrl`: the installed `@prisma/config` Datasource type supports `url` and `shadowDatabaseUrl`, not that key. Set the backend's `FRONTEND_URL` to the frontend's exact origin. Set the frontend's `NEXT_PUBLIC_API_URL` to the backend origin.
+| Area | Routes | Who can call |
+| --- | --- | --- |
+| Account access | `/api/auth/signup`, `/api/auth/member-login`, speaker login and invites | Public entry points; protected mutations require the relevant session |
+| Events and participation | `/api/events`, `/api/attendance`, `/api/posts`, `/api/forms` | Public reads where supported; signed-in members for participation; BOARD/EXEC_BOARD for administration |
+| Software Teams applications | `/api/join`, `/api/join/mine` | `SOFTWARE_ENGINEER` submission requires a signed-in `@uic.edu` member; BOARD/EXEC_BOARD reviews |
+| Member workspace | `/api/dashboard`, profiles, notifications, MCP tokens | Signed-in account; responses are scoped to the caller |
+| Exec workspace | `/api/board/*`, speaker review and scheduling | MEMBER account with EXEC_BOARD role; BOARD keeps the member workspace view |
+| Public intake | `/api/speakers`, `/api/subscribe`, `/api/partner-inquiries` | Public submission; exec review |
 
-`vercel.json` schedules `/api/cron/event-reminders` at `0 13 * * *`. The handler reminds GOING RSVPs for events in the next 24 hours, then sets `remindedAt`. Set `CRON_SECRET`; the handler skips authentication when it is unset. `lib/notify.ts` writes an in-app notification and attempts email according to preferences; failed email is logged, with no retry queue.
+Software Teams applications store `github`, `hoursPerWeek`, ranked `TeamProject` values, optional `skills` and `resumeUrl`, and the member `userId`. `GET /api/join/mine` returns the caller's applications. Board listings add `resumeOnFile` when the linked profile has a PDF resume. Current team labels are `team: site`, `team: opportunity-board`, `team: resume-builder`, `team: event-replays`, and `team: mock-interviewer`.
 
-## Drive: built, configuration required
+## Data model
 
-`lib/drive.ts` signs a service-account JWT with Node crypto and requests `drive.readonly`. Documents lists folders and searches names; editing happens in Drive. The three settings are blank in `.env.example`. Without them, `/api/board/documents` returns `configured: false`, which the frontend renders as “Google Drive isn't connected yet.”
+`MembershipApplication.userId` is intentionally stored without a Prisma relation. This diagram shows only relations declared in `prisma/schema.prisma`.
 
-Setup from `.env.example`:
+```mermaid
+erDiagram
+  User ||--o{ Session : has
+  User ||--o{ Rsvp : makes
+  User ||--o{ Attendance : records
+  User ||--o{ Post : writes
+  User ||--o{ BoardItem : owns
+  User o|--o| SpeakerSubmission : links
+  Event ||--o{ Rsvp : receives
+  Event ||--o{ Attendance : records
+  Event ||--o{ Post : contains
+  Event o|--o| SpeakerSubmission : schedules
+  Event ||--o{ BoardItem : links
+  Budget ||--o{ BoardItem : funds
+  Form ||--o{ Submission : receives
+  User ||--o{ Submission : sends
+```
 
-1. Create a Google Cloud project and enable the Drive API.
-2. Create a service account and JSON key. Set `GOOGLE_SERVICE_ACCOUNT_EMAIL` from `client_email` and `GOOGLE_SERVICE_ACCOUNT_KEY` from `private_key`.
-3. Share only the intended club folder with that account as Viewer. Search uses the account's accessible files, not a root-folder ancestry check.
-4. Set `GOOGLE_DRIVE_ROOT_FOLDER_ID` from the folder URL. The key accepts real newlines or literal `\n`.
+`BoardItem` represents both MONEY and OUTREACH work. Reuse `lib/board-item.ts` for stage validation and budget rollups.
 
-## Checks and contributions
+## Local development
 
-`.github/workflows/ci.yml` runs Node 24, `npm ci`, Prisma generation/migrations against a disposable Postgres service, lint, Vitest, TypeScript, and build. Locally: `npm run lint`, `npm test`, `npx tsc --noEmit`, `npm run build`. Database-backed tests need a dedicated test database; see their skip conditions before running them. See [AGENTS.md](AGENTS.md) for change and PR instructions.
+Requirements: Node.js 24, npm, and the local Postgres container named `logica-local-pg` on port `5555`.
+
+```bash
+npm ci
+cp .env.example .env
+docker start logica-local-pg
+npx prisma generate
+npx prisma migrate deploy
+npm run dev
+```
+
+Fill in `AUTH_SECRET`, `ALLOWED_EMAIL_DOMAIN`, and `FRONTEND_URL` in `.env`; never commit it. `npm run dev` serves the API on port 3001. Useful checks are `npm run lint`, `npm test`, `npx tsc --noEmit`, and `npm run build`.
+
+## Production migrations
+
+Vercel builds run `prisma generate && next build`; they do not apply migrations. Issue [#42](https://github.com/uic-logica/backend/issues/42) tracks automation. Until then, apply checked-in migrations manually through the Supabase session pooler:
+
+```bash
+DATABASE_URL="$DIRECT_URL" npx prisma migrate status
+DATABASE_URL="$DIRECT_URL" npx prisma migrate deploy
+```
+
+Here `DIRECT_URL` is a shell variable containing the session-pooler connection string supplied by the operator. Do not put credentials or real database hostnames in documentation or commits. Confirm the target before running either command.
+
+## Deployment notes
+
+- `FRONTEND_URL` is the exact frontend origin; the frontend's `NEXT_PUBLIC_API_URL` is this backend's origin.
+- Google Drive access in `lib/drive.ts` is read-only. Missing Drive configuration produces an explicit empty state.
+- `vercel.json` schedules event reminders. Set `CRON_SECRET` in deployed environments.
+- CI generates Prisma, migrates a disposable Postgres database, then runs lint, tests, TypeScript, and the production build.
