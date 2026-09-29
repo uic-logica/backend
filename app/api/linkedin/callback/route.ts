@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       where: { id: session.user.id },
       data: {
         linkedinSub: info.sub,
-        photoUrl: `/api/photo/${session.user.id}`,
+        photoUrl: `/api/photo/${session.user.id}?v=${Date.now()}`, // new URL per connect busts the 1h cache
         photoData: photo.data,
         photoMimeType: photo.mimeType,
       },

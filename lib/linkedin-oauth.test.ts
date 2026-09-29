@@ -12,6 +12,7 @@ describe("LinkedIn OAuth helpers", () => {
 
   it("rejects non-images and oversized images", () => {
     expect(validateLinkedInImage("text/html", new ArrayBuffer(4)).ok).toBe(false);
+    expect(validateLinkedInImage("image/svg+xml", new ArrayBuffer(4)).ok).toBe(false);
     expect(validateLinkedInImage("image/jpeg", new ArrayBuffer(5), 4).ok).toBe(false);
     expect(validateLinkedInImage("image/png; charset=binary", new ArrayBuffer(4), 4)).toMatchObject({
       ok: true,
