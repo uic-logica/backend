@@ -1,5 +1,7 @@
 # Authentication
 
+> **Owner:** [@nicolasrufino](https://github.com/nicolasrufino) · **Last reviewed:** Sep 29, 2026 · **Audience:** Backend members · **Type:** Reference
+
 ## Two account kinds, shared sessions
 
 `prisma/schema.prisma` separates `AccountKind` (MEMBER or SPEAKER) from `Role` (MEMBER, BOARD, EXEC_BOARD). `auth.ts` registers no sign-in providers and uses Auth.js database sessions. Password handlers create those sessions through `lib/session.ts`.

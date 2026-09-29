@@ -1,5 +1,7 @@
 # LOGICA @ UIC backend
 
+> **Owner:** [@nicolasrufino](https://github.com/nicolasrufino) · **Last reviewed:** Sep 29, 2026 · **Audience:** Members and recruiters · **Type:** Landing page
+
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs)](https://nextjs.org/) [![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma)](https://www.prisma.io/) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql)](https://supabase.com/) [![Vercel](https://img.shields.io/badge/Vercel-logica__backend-000000?logo=vercel)](https://logica-backend.vercel.app)
 
 This is the Next.js 16 App Router API for [LOGICA @ UIC](https://github.com/uic-logica), a University of Illinois Chicago student organization supporting Latinx and underrepresented students in computing. [Nicolas Rufino](https://github.com/nicolasrufino), software lead, owns every product, sets deadlines, and reviews and merges changes.

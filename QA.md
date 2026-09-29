@@ -1,5 +1,7 @@
 # QA environment
 
+> **Owner:** [@nicolasrufino](https://github.com/nicolasrufino) · **Last reviewed:** Sep 29, 2026 · **Audience:** QA and backend members · **Type:** Tutorial
+
 A throwaway copy of the platform with **filler accounts and filler data only**. No
 real member, speaker or budget data is in it, so the credentials below can be
 shared with everyone who is testing.
