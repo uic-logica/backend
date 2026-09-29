@@ -14,7 +14,14 @@ export async function GET() {
   }
 
   const applications = await prisma.membershipApplication.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json(applications);
+  // Flag the applicants with a PDF on their profile; the board downloads it from /api/resume/:userId.
+  const userIds = applications.flatMap((a) => (a.userId ? [a.userId] : []));
+  const withResume = new Set(
+    userIds.length
+      ? (await prisma.user.findMany({ where: { id: { in: userIds }, resumeData: { not: null } }, select: { id: true } })).map((u) => u.id)
+      : [],
+  );
+  return NextResponse.json(applications.map((a) => ({ ...a, resumeOnFile: !!a.userId && withResume.has(a.userId) })));
 }
 
 /**

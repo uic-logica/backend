@@ -25,7 +25,7 @@ describe("parseApplication", () => {
 
   it("accepts a full application and lowercases the email", () => {
     const result = parseApplication(VALID);
-    expect(result).toEqual({ ok: true, data: { ...VALID, email: "ada@uic.edu" } });
+    expect(result).toEqual({ ok: true, data: { ...VALID, email: "ada@uic.edu", resumeUrl: null } });
   });
 
   it("treats major and grad year as optional", () => {
@@ -56,5 +56,18 @@ describe("isStatus", () => {
   it("only accepts known statuses", () => {
     expect(isStatus("INTERVIEW")).toBe(true);
     expect(isStatus("APPROVED")).toBe(false);
+  });
+});
+
+describe("resumeUrl", () => {
+  const base = { name: "Ada", email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", why: "Build.", github: "ada", hoursPerWeek: 4, projects: ["RESUME_BUILDER"] };
+  it("accepts an https link and treats blank as none", () => {
+    const withLink = parseApplication({ ...base, resumeUrl: "https://example.com/cv.pdf" });
+    expect(withLink.ok && withLink.data.track === "SOFTWARE_ENGINEER" && withLink.data.resumeUrl).toBe("https://example.com/cv.pdf");
+    const blank = parseApplication({ ...base, resumeUrl: "  " });
+    expect(blank.ok && blank.data.track === "SOFTWARE_ENGINEER" && blank.data.resumeUrl).toBe(null);
+  });
+  it.each(["javascript:alert(1)", "http://example.com/cv.pdf", "not a link"])("rejects %s", (resumeUrl) => {
+    expect(parseApplication({ ...base, resumeUrl }).ok).toBe(false);
   });
 });

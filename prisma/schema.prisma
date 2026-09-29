@@ -320,6 +320,7 @@ model MembershipApplication {
   hoursPerWeek Int?
   projects     TeamProject[]     @default([])
   skills       String?
+  resumeUrl    String?
   userId       String?
   status       ApplicationStatus @default(PENDING)
   createdAt    DateTime          @default(now())

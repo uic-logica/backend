@@ -102,6 +102,7 @@ describe("POST /api/join", () => {
       hoursPerWeek: 12,
       projects: ["RESUME_BUILDER", "OPPORTUNITY_BOARD"],
       skills: " TypeScript and React ",
+      resumeUrl: " https://drive.google.com/file/d/abc ",
     };
     const response = await list.POST(new NextRequest("http://localhost/api/join", {
       method: "POST",
@@ -118,6 +119,7 @@ describe("POST /api/join", () => {
         hoursPerWeek: 12,
         projects: fields.projects,
         skills: "TypeScript and React",
+        resumeUrl: "https://drive.google.com/file/d/abc",
         userId: "user-1",
       },
     });

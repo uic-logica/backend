@@ -7,6 +7,7 @@ ADD COLUMN "github" TEXT,
 ADD COLUMN "hoursPerWeek" INTEGER,
 ADD COLUMN "projects" "TeamProject"[] NOT NULL DEFAULT ARRAY[]::"TeamProject"[],
 ADD COLUMN "skills" TEXT,
+ADD COLUMN "resumeUrl" TEXT,
 ADD COLUMN "userId" TEXT;
 
 -- CreateIndex

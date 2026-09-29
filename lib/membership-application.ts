@@ -27,6 +27,7 @@ export type ApplicationInput =
       hoursPerWeek: number;
       projects: TeamProject[];
       skills: string | null;
+      resumeUrl: string | null;
     };
 
 export type ParseResult = { ok: true; data: ApplicationInput } | { ok: false; error: string };
@@ -41,7 +42,7 @@ function optionalText(value: unknown, field: string): { ok: true; value: string 
 
 /** Validates a public application. Pure, so it's testable without a database. */
 export function parseApplication(payload: unknown): ParseResult {
-  const { name, email, track, major, gradYear, why, github, hoursPerWeek, projects, skills } = (payload ?? {}) as Record<string, unknown>;
+  const { name, email, track, major, gradYear, why, github, hoursPerWeek, projects, skills, resumeUrl } = (payload ?? {}) as Record<string, unknown>;
 
   if (typeof name !== "string" || !name.trim() || name.length > MAX_SHORT) {
     return { ok: false, error: `\`name\` is required (under ${MAX_SHORT} characters).` };
@@ -94,6 +95,11 @@ export function parseApplication(payload: unknown): ParseResult {
     if (skills !== undefined && skills !== null && (typeof skills !== "string" || skills.length > 500)) {
       return { ok: false, error: "`skills` must be text under 500 characters." };
     }
+    // Optional: a PDF on the profile is the other way to share one.
+    const link = typeof resumeUrl === "string" ? resumeUrl.trim() : "";
+    if (resumeUrl !== undefined && resumeUrl !== null && (typeof resumeUrl !== "string" || link.length > 500 || (link && !/^https:\/\/\S+$/i.test(link)))) {
+      return { ok: false, error: "`resumeUrl` must be an https:// link under 500 characters." };
+    }
 
     return {
       ok: true,
@@ -104,6 +110,7 @@ export function parseApplication(payload: unknown): ParseResult {
         hoursPerWeek,
         projects: projects as TeamProject[],
         skills: typeof skills === "string" ? skills.trim() || null : null,
+        resumeUrl: link || null,
       },
     };
   }
