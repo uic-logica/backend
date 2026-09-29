@@ -14,6 +14,7 @@ const SELF_FIELDS = {
   major: true,
   gradYear: true,
   linkedin: true,
+  photoUrl: true,
   resumeFilename: true, // read-only here — uploaded via /api/profile/resume
 } as const;
 
