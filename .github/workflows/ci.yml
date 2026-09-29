@@ -6,7 +6,16 @@ on:
   push:
     branches: [main]
 
+# A new push to the same PR cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
+  # Branch protection requires this job by name. Don't rename it.
   lint:
     runs-on: ubuntu-latest
     services:
@@ -27,10 +36,10 @@ jobs:
       DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
       AUTH_SECRET: "ci-placeholder"
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npx prisma generate
