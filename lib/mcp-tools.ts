@@ -1338,7 +1338,9 @@ export const TOOLS: Tool[] = [
       });
       return rows.map((a) => ({
         id: a.id, name: a.name, email: a.email, track: a.track,
-        major: a.major, gradYear: a.gradYear, why: a.why, status: a.status, at: a.createdAt,
+        major: a.major, gradYear: a.gradYear, why: a.why, github: a.github,
+        hoursPerWeek: a.hoursPerWeek, projects: a.projects, skills: a.skills,
+        userId: a.userId, status: a.status, at: a.createdAt,
       }));
     },
   },
