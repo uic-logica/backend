@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { createLinkedInState, validateLinkedInImage, verifyLinkedInState } from "./linkedin-oauth";
+import { describe, expect, it, vi } from "vitest";
+import { createLinkedInState, linkedInRedirectUri, validateLinkedInImage, verifyLinkedInState } from "./linkedin-oauth";
 
 describe("LinkedIn OAuth helpers", () => {
   it("accepts only the state paired with its signed cookie", () => {
@@ -18,5 +18,13 @@ describe("LinkedIn OAuth helpers", () => {
       ok: true,
       mimeType: "image/png",
     });
+  });
+});
+
+describe("linkedInRedirectUri", () => {
+  it("uses the first FRONTEND_URL origin", () => {
+    vi.stubEnv("FRONTEND_URL", "https://logicauic.org, https://old.vercel.app");
+    expect(linkedInRedirectUri()).toBe("https://logicauic.org/api/linkedin/callback");
+    vi.unstubAllEnvs();
   });
 });

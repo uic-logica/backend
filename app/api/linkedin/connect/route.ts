@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { createLinkedInState, LINKEDIN_STATE_COOKIE } from "@/lib/linkedin-oauth";
+import { createLinkedInState, LINKEDIN_STATE_COOKIE, linkedInRedirectUri } from "@/lib/linkedin-oauth";
 
 function config() {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-  const redirectUri = process.env.LINKEDIN_REDIRECT_URI;
   const secret = process.env.AUTH_SECRET;
-  return clientId && clientSecret && redirectUri && secret ? { clientId, redirectUri, secret } : null;
+  return clientId && clientSecret && secret ? { clientId, redirectUri: linkedInRedirectUri(), secret } : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -16,7 +15,7 @@ export async function GET(request: NextRequest) {
   const settings = config();
   if (!settings) {
     return NextResponse.json(
-      { error: "LinkedIn connection is not configured. Set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI, and AUTH_SECRET." },
+      { error: "LinkedIn connection is not configured. Set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, and AUTH_SECRET." },
       { status: 503 },
     );
   }

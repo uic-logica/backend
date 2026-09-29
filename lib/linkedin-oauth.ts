@@ -5,6 +5,16 @@ export const LINKEDIN_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 // Raster only: an SVG served from our origin could run script.
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+/** First FRONTEND_URL entry: the browser-facing origin that owns the session cookie. */
+export function frontendOrigin(): string {
+  return process.env.FRONTEND_URL?.split(",")[0].trim() || "http://localhost:3000";
+}
+
+/** Derived, not configured, so a domain move can't leave LinkedIn pointed at the old host. */
+export function linkedInRedirectUri(): string {
+  return `${frontendOrigin()}/api/linkedin/callback`;
+}
+
 function signature(state: string, secret: string): string {
   return createHmac("sha256", secret).update(state).digest("base64url");
 }
