@@ -16,7 +16,7 @@ Read the affected route, its `lib/` helpers, and `prisma/schema.prisma` before c
 - Use account-aware checks in `lib/authz.ts`. `runsWorkspace()` is EXEC_BOARD-only; BOARD has the member workspace view. `Officer` grants no permissions.
 - Start workspace handlers with `requireBoard()` from `lib/board-guard.ts`. Keep server-side authorization even when the frontend hides controls.
 - Reuse `lib/board-item.ts`: MONEY and OUTREACH share `BoardItem`, stage validation, and budget rollups. Do not add a parallel company/expense model for the same data.
-- Read `AUTH.md` and the actual auth handlers before touching credentials. Member passwords are issued through the script or exec endpoint; guest invites can accept a guest-chosen password. Do not restore OTP or the dev login bypass incidentally.
+- Read `AUTH.md` and the actual auth handlers before touching credentials. Members can sign up through `/api/auth/signup`; the script and exec endpoint issue or recover credentials administratively. Guest invites can accept a guest-chosen password. Do not restore OTP or the dev login bypass incidentally.
 - Keep password issuance/reset out of MCP. Update the registry and stage tests together when changing tools. Count `TOOLS` in `lib/mcp-tools.ts`, not a number copied from an old plan.
 - Drive is read-only in `lib/drive.ts`; missing configuration is an explicit empty state, not a reason to add fixtures.
 - Keep env files and credentials out of commits. `.gitignore` permits only `.env.example` among env files.
