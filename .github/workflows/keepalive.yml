@@ -19,6 +19,8 @@ on:
     - cron: "17 9 */3 * *"
   workflow_dispatch: # so anyone can wake it by hand before a demo
 
+permissions: {}
+
 jobs:
   ping:
     runs-on: ubuntu-latest

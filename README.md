@@ -103,4 +103,4 @@ Here `DIRECT_URL` is a shell variable containing the session-pooler connection s
 - `FRONTEND_URL` is the exact frontend origin; the frontend's `NEXT_PUBLIC_API_URL` is this backend's origin.
 - Google Drive access in `lib/drive.ts` is read-only. Missing Drive configuration produces an explicit empty state.
 - `vercel.json` schedules event reminders. Set `CRON_SECRET` in deployed environments.
-- CI generates Prisma, migrates a disposable Postgres database, then runs lint, tests, TypeScript, and the production build.
+- CI generates Prisma, migrates a disposable Postgres database, checks the result matches `schema.prisma` (fails if a schema change has no migration), then runs lint, tests, TypeScript, and the production build.
