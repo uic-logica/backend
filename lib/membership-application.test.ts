@@ -41,9 +41,9 @@ describe("parseApplication", () => {
     expect(parseApplication({ ...VALID, track: "CEO" }).ok).toBe(false);
   });
 
-  it("requires a name and a why", () => {
+  it("requires a name, and a why on the board track", () => {
     expect(parseApplication({ ...VALID, name: " " }).ok).toBe(false);
-    expect(parseApplication({ ...VALID, why: "" }).ok).toBe(false);
+    expect(parseApplication({ ...VALID, track: "BOARD_MEMBER", why: "" }).ok).toBe(false);
   });
 
   it("rejects an oversized why and a bad grad year", () => {
