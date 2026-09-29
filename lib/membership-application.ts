@@ -53,7 +53,9 @@ export function parseApplication(payload: unknown): ParseResult {
   if (typeof email !== "string" || (track === "BOARD_MEMBER" ? !isAllowedEmail(email) : !email.toLowerCase().endsWith("@uic.edu"))) {
     return { ok: false, error: "`email` must be your UIC email." };
   }
-  if (typeof why !== "string" || !why.trim() || why.length > MAX_WHY) {
+  // Optional on build-team applications ("Why are you special?"); stored as "" when skipped.
+  const whyOptional = track === "SOFTWARE_ENGINEER" && (why === undefined || why === null || why === "");
+  if (!whyOptional && (typeof why !== "string" || !why.trim() || why.length > MAX_WHY)) {
     return { ok: false, error: `\`why\` is required (under ${MAX_WHY} characters).` };
   }
   if (
@@ -73,7 +75,7 @@ export function parseApplication(payload: unknown): ParseResult {
     track: track as ApplicationTrack,
     major: parsedMajor.value,
     gradYear: (gradYear as number | null | undefined) ?? null,
-    why: why.trim(),
+    why: typeof why === "string" ? why.trim() : "",
   };
 
   if (track === "SOFTWARE_ENGINEER") {

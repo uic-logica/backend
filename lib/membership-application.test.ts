@@ -71,3 +71,14 @@ describe("resumeUrl", () => {
     expect(parseApplication({ ...base, resumeUrl }).ok).toBe(false);
   });
 });
+
+describe("why", () => {
+  const base = { name: "Ada", email: "ada@uic.edu", why: "", github: "ada", hoursPerWeek: 4, projects: ["RESUME_BUILDER"] };
+  it("is optional for build teams", () => {
+    const result = parseApplication({ ...base, track: "SOFTWARE_ENGINEER" });
+    expect(result.ok && result.data.why).toBe("");
+  });
+  it("is still required for the board track", () => {
+    expect(parseApplication({ ...base, track: "BOARD_MEMBER" }).ok).toBe(false);
+  });
+});
