@@ -53,6 +53,10 @@ model User {
   passwordHash        String? // scrypt, see lib/password.ts
   mustChangePassword  Boolean            @default(false)
   linkedin            String?
+  linkedinSub         String?            @unique
+  photoUrl            String?
+  photoData           Bytes?
+  photoMimeType       String?
   // Resume — any signed-in user (MEMBER or SPEAKER) can attach one via
   // /api/profile/resume. ponytail: stored as bytes in Postgres, not object
   // storage — fine at this scale (a handful of small PDFs); move to Vercel

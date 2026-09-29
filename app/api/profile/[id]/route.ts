@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { INVOLVEMENT_COUNTS, withInvolvement } from "@/lib/involvement";
 
 // This section is for someone else's profile.  
-const PUBLIC_FIELDS = { id: true, name: true, role: true, major: true, gradYear: true, image: true } as const;
+const PUBLIC_FIELDS = { id: true, name: true, role: true, major: true, gradYear: true, image: true, photoUrl: true } as const;
  
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();

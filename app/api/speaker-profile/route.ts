@@ -9,6 +9,7 @@ const SELF_FIELDS = {
   email: true,
   username: true,
   linkedin: true,
+  photoUrl: true,
   bio: true,
   resumeFilename: true, // upload/remove via /api/profile/resume, same as MEMBER accounts
   mustChangePassword: true,
