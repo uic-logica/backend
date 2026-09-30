@@ -1,0 +1,53 @@
+name: Migrate production
+
+# Applies checked-in Prisma migrations to the production database, only after
+# CI has passed on main. Replaces running `prisma migrate deploy` by hand (#42).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Manual re-run from the Actions tab (e.g. after fixing a failed migration).
+  workflow_dispatch:
+
+# One migration at a time, and never cancel one halfway through.
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    # workflow_run fires for failed CI too; only migrate code that passed.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    # The only place the production DB URL lives. Add a required reviewer on
+    # this environment (Settings → Environments) to make each migration need approval.
+    environment: production-migrations
+    timeout-minutes: 10
+    env:
+      # Supabase session pooler (port 5432), not the transaction pooler: migrations need a session.
+      DATABASE_URL: ${{ secrets.DIRECT_URL }}
+    steps:
+      - name: Require the database secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Set DIRECT_URL in the production-migrations environment (Settings → Environments)."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Migrate exactly the commit CI tested, not whatever main is now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Pending migrations
+        # Exit code 1 just means "migrations pending"; the next step applies them.
+        run: npx prisma migrate status || true
+      - name: Apply migrations
+        run: npx prisma migrate deploy
