@@ -495,7 +495,11 @@ export const TOOLS: Tool[] = [
         data: { submissionId, authorId: caller.id, body },
       });
       if (submission.user) {
-        await notifyUser(submission.user.id, "The LOGICA board replied about your talk.", "announcements");
+        try {
+          await notifyUser(submission.user.id, "The LOGICA board replied about your talk.", "announcements");
+        } catch (error) {
+          console.error("Failed to notify speaker about new message", error);
+        }
       }
       return { sent: true };
     },
@@ -530,13 +534,17 @@ export const TOOLS: Tool[] = [
         data: { status: decision as "CONFIRMED" | "DECLINED" | "PENDING" },
       });
       if (existing.user && (decision === "CONFIRMED" || decision === "DECLINED")) {
-        await notifyUser(
-          existing.user.id,
-          decision === "CONFIRMED"
-            ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
-            : "Your speaker submission to LOGICA @ UIC was declined.",
-          "announcements",
-        );
+        try {
+          await notifyUser(
+            existing.user.id,
+            decision === "CONFIRMED"
+              ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
+              : "Your speaker submission to LOGICA @ UIC was declined.",
+            "announcements",
+          );
+        } catch (error) {
+          console.error("Failed to notify speaker about submission update", error);
+        }
       }
       return { submissionId, status: updated.status };
     },

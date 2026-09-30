@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { validatePostBody } from "@/lib/request-limits";
 
 // logica-lean: bare-minimum Post CRUD for #7 (BE 4). No pagination, no
 // edit/delete, no likes/comments — real ticket designs those.
@@ -29,12 +30,11 @@ export async function POST(request: NextRequest) {
   }
 
   const { body } = (payload ?? {}) as { body?: unknown };
-  if (typeof body !== "string" || body.trim().length === 0) {
-    return NextResponse.json({ error: "`body` is required." }, { status: 400 });
-  }
+  const validated = validatePostBody(body);
+  if (!validated.ok) return NextResponse.json({ error: validated.error }, { status: 400 });
 
   const post = await prisma.post.create({
-    data: { body: body.trim(), authorId: session.user.id },
+    data: { body: validated.body, authorId: session.user.id },
     include: { author: { select: { id: true, name: true, role: true } } },
   });
   return NextResponse.json(post, { status: 201 });

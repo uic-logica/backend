@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { hasRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { attachmentContentDisposition } from "@/lib/content-disposition";
 
 /** Self, or board+ (reviewing who's signed up) — streams the resume file. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
@@ -24,7 +25,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   return new NextResponse(new Uint8Array(user.resumeData), {
     headers: {
       "Content-Type": user.resumeMimeType ?? "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${user.resumeFilename ?? "resume"}"`,
+      "Content-Disposition": attachmentContentDisposition(user.resumeFilename),
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

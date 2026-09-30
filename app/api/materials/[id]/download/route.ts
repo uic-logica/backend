@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { hasRole } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { attachmentContentDisposition } from "@/lib/content-disposition";
 
 /** Public materials: anyone. Internal: board+ only. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,7 +19,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   return new NextResponse(new Uint8Array(material.data), {
     headers: {
       "Content-Type": material.mimeType,
-      "Content-Disposition": `attachment; filename="${material.filename}"`,
+      "Content-Disposition": attachmentContentDisposition(material.filename),
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const parsed = parseUpload(payload, MAX_BYTES);
+  const parsed = parseUpload(payload, MAX_BYTES, ["pdf", "pptx", "ppt", "docx", "png", "jpeg"]);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   const { visibility } = (payload ?? {}) as { visibility?: unknown };
@@ -63,7 +63,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
 
   if (materialVisibility === "PUBLIC") {
-    await notifyEventGoing(id, `New material posted for ${event.title}: ${material.filename}`, "eventReminders");
+    try {
+      await notifyEventGoing(id, `New material posted for ${event.title}: ${material.filename}`, "eventReminders");
+    } catch (error) {
+      console.error("Failed to notify event attendees about new material", error);
+    }
   }
 
   return NextResponse.json(material, { status: 201 });

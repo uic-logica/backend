@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { notifyEventGoing } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { validatePostBody } from "@/lib/request-limits";
 
 /** Signed-in — notes/thoughts on this specific event, same idea as the general feed. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -34,17 +35,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { body } = (payload ?? {}) as { body?: unknown };
-  if (typeof body !== "string" || body.trim().length === 0) {
-    return NextResponse.json({ error: "`body` is required." }, { status: 400 });
-  }
+  const validated = validatePostBody(body);
+  if (!validated.ok) return NextResponse.json({ error: validated.error }, { status: 400 });
 
   const post = await prisma.post.create({
-    data: { body: body.trim(), authorId: session.user.id, eventId: id },
+    data: { body: validated.body, authorId: session.user.id, eventId: id },
     include: { author: { select: { id: true, name: true, role: true } } },
   });
 
   const who = post.author.name?.trim() || "Someone";
-  await notifyEventGoing(id, `${who} posted on ${event.title}: ${post.body}`, "eventReminders", session.user.id);
+  try {
+    await notifyEventGoing(id, `${who} posted on ${event.title}: ${post.body}`, "eventReminders", session.user.id);
+  } catch (error) {
+    console.error("Failed to notify event attendees about new post", error);
+  }
 
   return NextResponse.json(post, { status: 201 });
 }

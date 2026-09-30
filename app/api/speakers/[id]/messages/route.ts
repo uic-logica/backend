@@ -86,11 +86,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // message is noise; they live in the directory. logica-lean: revisit if
   // the board starts missing threads.
   if (who.board && submission.user) {
-    await notifyUser(
-      submission.user.id,
-      `The LOGICA board replied about your talk.`,
-      "announcements",
-    );
+    try {
+      await notifyUser(
+        submission.user.id,
+        `The LOGICA board replied about your talk.`,
+        "announcements",
+      );
+    } catch (error) {
+      console.error("Failed to notify speaker about new message", error);
+    }
   }
 
   return NextResponse.json(message, { status: 201 });
