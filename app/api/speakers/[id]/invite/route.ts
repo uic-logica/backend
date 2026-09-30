@@ -66,7 +66,11 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     tempPassword,
     submission.status === "CONFIRMED",
   );
-  await sendMail({ to: submission.email, subject, text, html });
+  try {
+    await sendMail({ to: submission.email, subject, text, html });
+  } catch (error) {
+    console.error("Failed to email speaker invitation", error);
+  }
 
   // Temp password returned once as a fallback if the email doesn't land —
   // never stored or logged anywhere after this response.

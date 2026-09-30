@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const parsed = parseUpload(payload, MAX_BYTES);
+  const parsed = parseUpload(payload, MAX_BYTES, ["pdf", "docx", "doc"]);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   await prisma.user.update({

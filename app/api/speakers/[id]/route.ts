@@ -98,7 +98,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       status === "CONFIRMED"
         ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
         : "Your speaker submission to LOGICA @ UIC was declined.";
-    await notifyUser(updated.user.id, message, "announcements");
+    try {
+      await notifyUser(updated.user.id, message, "announcements");
+    } catch (error) {
+      console.error("Failed to notify speaker about submission update", error);
+    }
   }
 
   return NextResponse.json(updated);
