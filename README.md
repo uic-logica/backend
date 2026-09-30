@@ -89,14 +89,28 @@ Fill in `AUTH_SECRET`, `ALLOWED_EMAIL_DOMAIN`, and `FRONTEND_URL` in `.env`; nev
 
 ## Production migrations
 
-Vercel builds run `prisma generate && next build`; they do not apply migrations. Issue [#42](https://github.com/uic-logica/backend/issues/42) tracks automation. Until then, apply checked-in migrations manually through the Supabase session pooler:
+Automatic. When CI passes on `main`, [`migrate.yml`](.github/workflows/migrate.yml) runs `prisma migrate deploy` against production, one run at a time, for the exact commit CI tested. Vercel builds still only run `prisma generate && next build`.
+
+```mermaid
+flowchart LR
+  M[Merge to main] --> C[CI: migrations + tests on a throwaway DB]
+  C -- pass --> G["Migrate production<br/>(production-migrations env)"]
+  M --> V[Vercel deploys code]
+  style G fill:#FECC15,color:#111
+```
+
+- The database URL is the `DIRECT_URL` secret on the `production-migrations` GitHub environment (Supabase **session** pooler, port 5432). It lives nowhere else in the repo.
+- Vercel and the migration run in parallel, so keep migrations **additive** (new nullable columns, new tables) and remove old columns in a later PR.
+- Re-run or run on demand from **Actions → Migrate production → Run workflow**.
+
+Manual fallback, only if Actions is down:
 
 ```bash
 DATABASE_URL="$DIRECT_URL" npx prisma migrate status
 DATABASE_URL="$DIRECT_URL" npx prisma migrate deploy
 ```
 
-Here `DIRECT_URL` is a shell variable containing the session-pooler connection string supplied by the operator. Do not put credentials or real database hostnames in documentation or commits. Confirm the target before running either command.
+Here `DIRECT_URL` is a shell variable holding the session-pooler URL. Never put credentials or real hostnames in docs or commits.
 
 ## Deployment notes
 
