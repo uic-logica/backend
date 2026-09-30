@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { createLinkedInState, LINKEDIN_STATE_COOKIE, linkedInRedirectUri } from "@/lib/linkedin-oauth";
+import { createLinkedInState, frontendOrigin, LINKEDIN_STATE_COOKIE, linkedInRedirectUri } from "@/lib/linkedin-oauth";
 
 function config() {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
@@ -11,13 +11,12 @@ function config() {
 
 export async function GET(request: NextRequest) {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  // A browser link, not a fetch: land on a real page instead of raw JSON.
+  if (!session?.user) return NextResponse.redirect(new URL("/signin", frontendOrigin()));
   const settings = config();
   if (!settings) {
-    return NextResponse.json(
-      { error: "LinkedIn connection is not configured. Set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, and AUTH_SECRET." },
-      { status: 503 },
-    );
+    console.error("LinkedIn connect is not configured: set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET and AUTH_SECRET.");
+    return NextResponse.redirect(new URL("/dashboard/profile?linkedin=error", frontendOrigin()));
   }
 
   const { state, cookie } = createLinkedInState(settings.secret);
