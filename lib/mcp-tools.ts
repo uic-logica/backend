@@ -1375,7 +1375,11 @@ export const TOOLS: Tool[] = [
       if (!existing) fail("No application with that id.");
       const updated = await prisma.membershipApplication.update({
         where: { id },
-        data: { status: decision as "PENDING" | "INTERVIEW" | "ACCEPTED" | "DECLINED" },
+        // Same clock the reapply rule reads; asking for more info needs a note, so it stays in the dashboard.
+        data: {
+          status: decision as "PENDING" | "INTERVIEW" | "ACCEPTED" | "DECLINED",
+          ...(decision === "ACCEPTED" || decision === "DECLINED" ? { decidedAt: new Date() } : {}),
+        },
         select: { id: true, name: true, email: true, status: true },
       });
       return updated;

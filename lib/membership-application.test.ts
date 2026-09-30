@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isStatus, parseApplication } from "./membership-application";
+import { isStatus, parseApplication, reapplyBlock } from "./membership-application";
 
 const VALID = {
   name: "Ada Lovelace",
@@ -7,7 +7,7 @@ const VALID = {
   track: "SOFTWARE_ENGINEER",
   major: "CS",
   gradYear: 2028,
-  why: "I want to learn.",
+  why: "I want to learn by shipping real features with the team.",
   github: "ada",
   hoursPerWeek: 10,
   projects: ["OPPORTUNITY_BOARD"],
@@ -28,9 +28,10 @@ describe("parseApplication", () => {
     expect(result).toEqual({ ok: true, data: { ...VALID, email: "ada@uic.edu", resumeUrl: null } });
   });
 
-  it("treats major and grad year as optional", () => {
-    const result = parseApplication({ ...VALID, major: undefined, gradYear: undefined });
-    expect(result.ok && result.data.major === null && result.data.gradYear === null).toBe(true);
+  it("requires major, grad year and skills", () => {
+    expect(parseApplication({ ...VALID, major: undefined }).ok).toBe(false);
+    expect(parseApplication({ ...VALID, gradYear: undefined }).ok).toBe(false);
+    expect(parseApplication({ ...VALID, skills: " " }).ok).toBe(false);
   });
 
   it("rejects a non-UIC email", () => {
@@ -60,7 +61,7 @@ describe("isStatus", () => {
 });
 
 describe("resumeUrl", () => {
-  const base = { name: "Ada", email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", why: "Build.", github: "ada", hoursPerWeek: 4, projects: ["RESUME_BUILDER"] };
+  const base = { ...VALID, email: "ada@uic.edu" };
   it("accepts an https link and treats blank as none", () => {
     const withLink = parseApplication({ ...base, resumeUrl: "https://example.com/cv.pdf" });
     expect(withLink.ok && withLink.data.track === "SOFTWARE_ENGINEER" && withLink.data.resumeUrl).toBe("https://example.com/cv.pdf");
@@ -73,12 +74,30 @@ describe("resumeUrl", () => {
 });
 
 describe("why", () => {
-  const base = { name: "Ada", email: "ada@uic.edu", why: "", github: "ada", hoursPerWeek: 4, projects: ["RESUME_BUILDER"] };
-  it("is optional for build teams", () => {
-    const result = parseApplication({ ...base, track: "SOFTWARE_ENGINEER" });
-    expect(result.ok && result.data.why).toBe("");
+  // The board track checks ALLOWED_EMAIL_DOMAIN.
+  beforeEach(() => { process.env.ALLOWED_EMAIL_DOMAIN = "uic.edu"; });
+  it("needs 40 characters on both tracks", () => {
+    for (const track of ["SOFTWARE_ENGINEER", "BOARD_MEMBER"]) {
+      expect(parseApplication({ ...VALID, track, why: "Short." }).ok).toBe(false);
+      expect(parseApplication({ ...VALID, track, why: "x".repeat(40) }).ok).toBe(true);
+    }
   });
-  it("is still required for the board track", () => {
-    expect(parseApplication({ ...base, track: "BOARD_MEMBER" }).ok).toBe(false);
+});
+
+describe("reapplyBlock", () => {
+  const now = new Date("2026-10-01T00:00:00Z");
+  const row = (status: string, extra = {}) => ({ status, canReapply: true, decidedAt: null, createdAt: new Date("2026-09-01T00:00:00Z"), ...extra }) as never;
+
+  it("lets a first-time applicant through", () => expect(reapplyBlock([], now)).toBeNull());
+  it.each(["PENDING", "INTERVIEW", "NEEDS_INFO", "ACCEPTED"])("blocks while one is %s", (status) => {
+    expect(reapplyBlock([row(status)], now)).not.toBeNull();
+  });
+  it("blocks a final decline", () => {
+    expect(reapplyBlock([row("DECLINED", { canReapply: false })], now)).toBe("You can't reapply for this role.");
+  });
+  it("waits 90 days after a decline", () => {
+    const declined = row("DECLINED", { decidedAt: new Date("2026-09-15T00:00:00Z") });
+    expect(reapplyBlock([declined], now)).toBe("You can reapply for this role from 2026-12-14.");
+    expect(reapplyBlock([declined], new Date("2026-12-15T00:00:00Z"))).toBeNull();
   });
 });
