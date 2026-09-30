@@ -299,6 +299,8 @@ enum ApplicationTrack {
 enum ApplicationStatus {
   PENDING
   INTERVIEW
+  // The board sent it back with reviewNote; the applicant edits it and it returns to PENDING.
+  NEEDS_INFO
   ACCEPTED
   DECLINED
 }
@@ -327,7 +329,13 @@ model MembershipApplication {
   resumeUrl    String?
   userId       String?
   status       ApplicationStatus @default(PENDING)
+  reviewNote   String?
+  reviewedAt   DateTime?
+  // Set on DECLINED: false means the board doesn't want another application for this track.
+  canReapply   Boolean           @default(true)
+  decidedAt    DateTime?
   createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @default(now()) @updatedAt
 
   @@index([email])
   @@index([userId])

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isBoardAccount } from "@/lib/authz";
-import { parseApplication } from "@/lib/membership-application";
+import { parseApplication, reapplyBlock } from "@/lib/membership-application";
 import { prisma } from "@/lib/prisma";
 import { overAttemptLimit } from "@/lib/rate-limit";
 
@@ -29,7 +29,7 @@ export async function GET() {
  * team applications use the signed-in member's UIC identity.
  *
  * logica-lean: limited per email, in memory, and one open application per
- * email and track. That doesn't stop someone cycling through made-up UIC
+ * email and track (see reapplyBlock for the rules after a decision). That doesn't stop someone cycling through made-up UIC
  * addresses. Revisit with a per-IP limit if junk applications show up.
  */
 export async function POST(request: NextRequest) {
@@ -63,12 +63,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
   }
 
-  const open = await prisma.membershipApplication.findFirst({
-    where: { email, track, status: { in: ["PENDING", "INTERVIEW"] } },
-    select: { id: true },
+  const past = await prisma.membershipApplication.findMany({
+    where: { email, track },
+    select: { status: true, canReapply: true, decidedAt: true, createdAt: true },
   });
-  if (open) {
-    return NextResponse.json({ error: "You already have an application in for this track." }, { status: 409 });
+  const blocked = reapplyBlock(past);
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
+
+  if (userId && parsed.data.track === "SOFTWARE_ENGINEER" && !parsed.data.resumeUrl) {
+    const onFile = await prisma.user.findFirst({ where: { id: userId, resumeData: { not: null } }, select: { id: true } });
+    if (!onFile) {
+      return NextResponse.json({ error: "Add a resume: upload a PDF on your profile or paste a link." }, { status: 400 });
+    }
   }
 
   const application = await prisma.membershipApplication.create({

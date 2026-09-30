@@ -2,17 +2,21 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
   membershipApplication: {
     findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(),
   },
+  user: { findFirst: vi.fn(), findUnique: vi.fn() },
 } }));
 
 import { auth } from "@/auth";
+import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import * as list from "./route";
 import * as review from "./[id]/route";
 import * as mine from "./mine/route";
+import * as update from "./mine/[id]/route";
 
 const params = { params: Promise.resolve({ id: "app-1" }) };
 const request = () =>
@@ -49,7 +53,7 @@ describe("POST /api/join", () => {
     email: "ada@uic.edu",
     major: "Computer Science",
     gradYear: 2028,
-    why: "I want to contribute.",
+    why: "I want to contribute to the club and learn by building real things.",
   };
   const submit = (track: string) => list.POST(new NextRequest("http://localhost/api/join", {
     method: "POST",
@@ -59,7 +63,8 @@ describe("POST /api/join", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("ALLOWED_EMAIL_DOMAIN", "uic.edu");
-    vi.mocked(prisma.membershipApplication.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.membershipApplication.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.membershipApplication.create).mockResolvedValue({ id: "app-1" } as never);
   });
 
@@ -129,7 +134,7 @@ describe("POST /api/join", () => {
     signedIn();
     const response = await list.POST(new NextRequest("http://localhost/api/join", {
       method: "POST",
-      body: JSON.stringify({ ...application, track: "SOFTWARE_ENGINEER", github: "ada", hoursPerWeek: 10, projects }),
+      body: JSON.stringify({ ...application, track: "SOFTWARE_ENGINEER", github: "ada", hoursPerWeek: 10, skills: "Go, SQL", projects }),
     }));
 
     expect(response.status).toBe(400);
@@ -141,12 +146,48 @@ describe("POST /api/join", () => {
     const response = await list.POST(new NextRequest("http://localhost/api/join", {
       method: "POST",
       body: JSON.stringify({
-        ...application, track: "SOFTWARE_ENGINEER", github: "ada", hoursPerWeek,
+        ...application, track: "SOFTWARE_ENGINEER", github: "ada", hoursPerWeek, skills: "Go, SQL",
         projects: ["EVENT_REPLAYS"],
       }),
     }));
 
     expect(response.status).toBe(400);
+  });
+
+  const build = { github: "ada", hoursPerWeek: 10, projects: ["EVENT_REPLAYS"], skills: "Go, SQL" };
+  const post = (body: object) => list.POST(new NextRequest("http://localhost/api/join", { method: "POST", body: JSON.stringify(body) }));
+
+  it.each(["major", "gradYear", "why"])("requires %s", async (field) => {
+    const response = await post({ ...application, track: "BOARD_MEMBER", [field]: undefined });
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a one-line why", async () => {
+    expect((await post({ ...application, why: "I like code.", track: "BOARD_MEMBER" })).status).toBe(400);
+  });
+
+  it("requires skills on a build-team application", async () => {
+    signedIn();
+    expect((await post({ ...application, track: "SOFTWARE_ENGINEER", ...build, skills: "" })).status).toBe(400);
+  });
+
+  it("requires a resume link or a profile PDF", async () => {
+    signedIn();
+    const response = await post({ ...application, track: "SOFTWARE_ENGINEER", ...build });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Add a resume: upload a PDF on your profile or paste a link." });
+
+    vi.mocked(prisma.user.findFirst).mockResolvedValue({ id: "user-1" } as never);
+    expect((await post({ ...application, track: "SOFTWARE_ENGINEER", ...build })).status).toBe(201);
+  });
+
+  it("blocks reapplying after a final decline", async () => {
+    vi.mocked(prisma.membershipApplication.findMany).mockResolvedValue([
+      { status: "DECLINED", canReapply: false, decidedAt: new Date(), createdAt: new Date() },
+    ] as never);
+    const response = await submit("BOARD_MEMBER");
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "You can't reapply for this role." });
   });
 
   it.each(["GENERAL", "MENTORSHIP"])("rejects the historical %s track", async (track) => {
@@ -186,8 +227,76 @@ describe("GET /api/join/mine", () => {
       where: { OR: [{ userId: "user-1" }, { email: "ada@uic.edu" }] },
       orderBy: { createdAt: "desc" },
       select: {
-        id: true, track: true, status: true, projects: true, hoursPerWeek: true, createdAt: true,
+        id: true, track: true, status: true, projects: true, hoursPerWeek: true,
+        name: true, major: true, gradYear: true, why: true, github: true, skills: true, resumeUrl: true,
+        reviewNote: true, canReapply: true, decidedAt: true, createdAt: true,
       },
     });
+  });
+});
+
+describe("PATCH /api/join/:id review", () => {
+  const board = () => vi.mocked(auth).mockResolvedValue({ user: { id: "b1", role: "EXEC_BOARD", accountKind: "MEMBER" }, expires: "" } as never);
+  const patch = (body: object) => review.PATCH(new NextRequest("http://localhost/api/join/app-1", { method: "PATCH", body: JSON.stringify(body) }), params);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: "u9", email: "ada@uic.edu", track: "BOARD_MEMBER" } as never);
+    vi.mocked(prisma.membershipApplication.update).mockResolvedValue({ id: "app-1" } as never);
+  });
+
+  it("needs a note to ask for more info", async () => {
+    board();
+    expect((await patch({ status: "NEEDS_INFO", note: "more" })).status).toBe(400);
+  });
+
+  it("stores the note and tells the applicant", async () => {
+    board();
+    expect((await patch({ status: "NEEDS_INFO", note: "Add a link to a project you built." })).status).toBe(200);
+    expect(prisma.membershipApplication.update).toHaveBeenCalledWith({
+      where: { id: "app-1" },
+      data: expect.objectContaining({ status: "NEEDS_INFO", reviewNote: "Add a link to a project you built." }),
+    });
+    expect(notifyUser).toHaveBeenCalledWith("u9", expect.stringContaining("Add a link to a project you built."), "announcements");
+  });
+
+  it("records a final decline", async () => {
+    board();
+    await patch({ status: "DECLINED", canReapply: false });
+    expect(prisma.membershipApplication.update).toHaveBeenCalledWith({
+      where: { id: "app-1" },
+      data: expect.objectContaining({ status: "DECLINED", canReapply: false, decidedAt: expect.any(Date) }),
+    });
+  });
+});
+
+describe("PATCH /api/join/mine/:id", () => {
+  const body = { name: "Ada", major: "CS", gradYear: 2028, why: "Here is a longer answer about why I want to join the board." };
+  const call = () => update.PATCH(new NextRequest("http://localhost/api/join/mine/app-1", { method: "PATCH", body: JSON.stringify(body) }), params);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("ALLOWED_EMAIL_DOMAIN", "uic.edu");
+    vi.mocked(auth).mockResolvedValue({ user: { id: "u1", email: "ada@uic.edu", role: "MEMBER" }, expires: "" } as never);
+    vi.mocked(prisma.membershipApplication.update).mockResolvedValue({ id: "app-1", status: "PENDING" } as never);
+  });
+
+  it("returns an answered application to PENDING", async () => {
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: null, email: "ada@uic.edu", track: "BOARD_MEMBER", status: "NEEDS_INFO" } as never);
+    expect((await call()).status).toBe(200);
+    expect(prisma.membershipApplication.update).toHaveBeenCalledWith({
+      where: { id: "app-1" },
+      data: expect.objectContaining({ status: "PENDING", email: "ada@uic.edu", track: "BOARD_MEMBER" }),
+    });
+  });
+
+  it("hides someone else's application", async () => {
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: "u2", email: "bob@uic.edu", track: "BOARD_MEMBER", status: "NEEDS_INFO" } as never);
+    expect((await call()).status).toBe(404);
+  });
+
+  it("only edits while the board is waiting", async () => {
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: "u1", email: "ada@uic.edu", track: "BOARD_MEMBER", status: "PENDING" } as never);
+    expect((await call()).status).toBe(409);
   });
 });

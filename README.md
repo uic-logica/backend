@@ -46,7 +46,22 @@ For local signup, `ALLOWED_EMAIL_DOMAIN` must be a real domain such as `uic.edu`
 | Exec workspace | `/api/board/*`, speaker review and scheduling | MEMBER account with EXEC_BOARD role; BOARD keeps the member workspace view |
 | Public intake | `/api/speakers`, `/api/subscribe`, `/api/partner-inquiries` | Public submission; exec review |
 
-Software Teams applications store `github`, `hoursPerWeek`, ranked `TeamProject` values, optional `skills` and `resumeUrl`, and the member `userId`. `GET /api/join/mine` returns the caller's applications. Board listings add `resumeOnFile` when the linked profile has a PDF resume. Current team labels are `team: site`, `team: opportunity-board`, `team: resume-builder`, `team: event-replays`, and `team: mock-interviewer`.
+Every application needs name, UIC email, major, grad year and a `why` of 40+ characters. Software Teams applications also need `github`, `hoursPerWeek`, ranked `TeamProject` values, `skills`, and a resume (`resumeUrl` or a PDF on the profile); they store the member `userId`. Board listings add `resumeOnFile` when the linked profile has a PDF resume.
+
+```mermaid
+stateDiagram-v2
+  [*] --> PENDING
+  PENDING --> INTERVIEW
+  PENDING --> NEEDS_INFO: board note
+  NEEDS_INFO --> PENDING: applicant updates (PATCH /api/join/mine/:id)
+  INTERVIEW --> ACCEPTED
+  INTERVIEW --> DECLINED
+  PENDING --> DECLINED
+  DECLINED --> [*]: canReapply=false
+  DECLINED --> PENDING: new application after 90 days
+```
+
+`GET /api/join/mine` returns the caller's applications with the board's `reviewNote`. One open application per email and track; after a decline the board picks `canReapply`, and a new one is allowed 90 days after `decidedAt`. Current team labels are `team: site`, `team: opportunity-board`, `team: resume-builder`, `team: event-replays`, and `team: mock-interviewer`.
 
 ## Data model
 
