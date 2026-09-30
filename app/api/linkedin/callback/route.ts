@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { LINKEDIN_STATE_COOKIE, validateLinkedInImage, verifyLinkedInState } from "@/lib/linkedin-oauth";
+import { frontendOrigin, LINKEDIN_STATE_COOKIE, linkedInRedirectUri, validateLinkedInImage, verifyLinkedInState } from "@/lib/linkedin-oauth";
 
 type LinkedInUserInfo = { sub?: unknown; picture?: unknown };
 
 function profileRedirect(result: "connected" | "error") {
-  const frontend = process.env.FRONTEND_URL ?? "http://localhost:3000";
-  return new URL(`/dashboard/profile?linkedin=${result}`, frontend);
+  return new URL(`/dashboard/profile?linkedin=${result}`, frontendOrigin());
 }
 
 function clearState(response: NextResponse) {
@@ -27,8 +26,8 @@ export async function GET(request: NextRequest) {
   const secret = process.env.AUTH_SECRET;
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-  const redirectUri = process.env.LINKEDIN_REDIRECT_URI;
-  if (!session?.user || !secret || !clientId || !clientSecret || !redirectUri) return fail();
+  const redirectUri = linkedInRedirectUri();
+  if (!session?.user || !secret || !clientId || !clientSecret) return fail();
 
   const state = request.nextUrl.searchParams.get("state");
   if (!verifyLinkedInState(state, request.cookies.get(LINKEDIN_STATE_COOKIE)?.value, secret)) return fail();

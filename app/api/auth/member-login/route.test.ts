@@ -85,6 +85,14 @@ describe("member password login", () => {
     expect(prisma.session.create).not.toHaveBeenCalled();
   });
 
+  it("accepts any origin in a comma-separated FRONTEND_URL", async () => {
+    vi.stubEnv("FRONTEND_URL", "https://old.test, https://club.test");
+    const ok = await POST(request({ email: "person@uic.edu", password }));
+    expect(ok.status).not.toBe(403);
+    const bad = await POST(request({ email: "person@uic.edu", password }, { origin: "https://evil.test" }));
+    expect(bad.status).toBe(403);
+  });
+
   it("rejects malformed JSON", async () => {
     const response = await POST(new NextRequest("https://club.test/api/auth/member-login", {
       method: "POST", headers: { "content-type": "application/json" }, body: "{",
