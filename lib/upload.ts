@@ -9,22 +9,22 @@ export type ParsedUpload = { filename: string; mimeType: string; data: Uint8Arra
 
 export type UploadKind = "pdf" | "docx" | "doc" | "pptx" | "ppt" | "png" | "jpeg";
 
-const TYPES: Record<UploadKind, { extensions: string[]; mimeTypes: string[]; normalizedMimeType: string }> = {
-  pdf: { extensions: [".pdf"], mimeTypes: ["application/pdf"], normalizedMimeType: "application/pdf" },
+const TYPES: Record<UploadKind, { extensions: string[]; normalizedMimeType: string }> = {
+  pdf: { extensions: [".pdf"], normalizedMimeType: "application/pdf" },
   docx: {
     extensions: [".docx"],
-    mimeTypes: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+   
     normalizedMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   },
-  doc: { extensions: [".doc"], mimeTypes: ["application/msword"], normalizedMimeType: "application/msword" },
+  doc: { extensions: [".doc"], normalizedMimeType: "application/msword" },
   pptx: {
     extensions: [".pptx"],
-    mimeTypes: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+   
     normalizedMimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   },
-  ppt: { extensions: [".ppt"], mimeTypes: ["application/vnd.ms-powerpoint"], normalizedMimeType: "application/vnd.ms-powerpoint" },
-  png: { extensions: [".png"], mimeTypes: ["image/png"], normalizedMimeType: "image/png" },
-  jpeg: { extensions: [".jpg", ".jpeg"], mimeTypes: ["image/jpeg"], normalizedMimeType: "image/jpeg" },
+  ppt: { extensions: [".ppt"], normalizedMimeType: "application/vnd.ms-powerpoint" },
+  png: { extensions: [".png"], normalizedMimeType: "image/png" },
+  jpeg: { extensions: [".jpg", ".jpeg"], normalizedMimeType: "image/jpeg" },
 };
 
 function hasPrefix(data: Buffer, prefix: number[] | string): boolean {
@@ -74,13 +74,12 @@ export function parseUpload(
   }
 
   const normalizedFilename = filename.trim();
-  const normalizedClaim = mimeType.trim().toLowerCase();
-  const kind = allowedKinds.find((candidate) => {
-    const type = TYPES[candidate];
-    return type.extensions.some((extension) => normalizedFilename.toLowerCase().endsWith(extension))
-      && type.mimeTypes.includes(normalizedClaim)
-      && hasSignature(candidate, buffer);
-  });
+  // Extension + magic bytes decide the type; the browser's claimed MIME is ignored because
+  // it's unreliable (e.g. .docx arrives as application/octet-stream on machines without Office).
+  const kind = allowedKinds.find((candidate) =>
+    TYPES[candidate].extensions.some((extension) => normalizedFilename.toLowerCase().endsWith(extension))
+    && hasSignature(candidate, buffer),
+  );
   if (!kind) {
     return { ok: false, error: "File type is not allowed or does not match its contents." };
   }

@@ -59,3 +59,11 @@ describe("parseUpload", () => {
     expect(parseUpload({ ...VALID, filename: "resume\r\nX-Evil: yes.pdf" }, 1024, ["pdf"]).ok).toBe(false);
   });
 });
+
+describe("parseUpload trusts contents over the browser's MIME claim", () => {
+  it("accepts a real .docx reported as application/octet-stream", () => {
+    const zip = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]).toString("base64");
+    const result = parseUpload({ filename: "resume.docx", mimeType: "application/octet-stream", data: zip }, 1024, ["pdf", "docx", "doc"]);
+    expect(result).toMatchObject({ ok: true, upload: { mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" } });
+  });
+});
