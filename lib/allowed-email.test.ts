@@ -1,31 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { generateOtp, isAllowedEmail, otpEmail, OTP_MAX_AGE_SECONDS } from "./otp";
+import { isAllowedEmail } from "./allowed-email";
 
 const original = process.env.ALLOWED_EMAIL_DOMAIN;
 afterEach(() => {
   process.env.ALLOWED_EMAIL_DOMAIN = original;
-});
-
-describe("generateOtp", () => {
-  it("is always six digits, zero-padded", () => {
-    for (let i = 0; i < 2000; i++) {
-      expect(generateOtp()).toMatch(/^\d{6}$/);
-    }
-  });
-
-  it("can produce codes in the low range that padding would otherwise shorten", () => {
-    // 2000 draws from 10^6 won't hit 000042 on purpose, so assert the property
-    // that matters: nothing is ever shorter than six characters.
-    const lengths = new Set(Array.from({ length: 2000 }, () => generateOtp().length));
-    expect([...lengths]).toEqual([6]);
-  });
-
-  it("does not repeat itself constantly", () => {
-    const seen = new Set(Array.from({ length: 500 }, () => generateOtp()));
-    // A fixed or badly-seeded generator collapses this to a handful of values.
-    expect(seen.size).toBeGreaterThan(450);
-  });
 });
 
 describe("isAllowedEmail", () => {
@@ -75,22 +54,5 @@ describe("isAllowedEmail", () => {
   it("rejects an address with no domain at all", () => {
     process.env.ALLOWED_EMAIL_DOMAIN = "uic.edu";
     expect(isAllowedEmail("uic.edu")).toBe(false);
-  });
-});
-
-describe("otpEmail", () => {
-  it("puts the code and expiry in the subject and both bodies", () => {
-    const { subject, text, html } = otpEmail("123456", 10);
-    expect(subject).toContain("123456");
-    expect(text).toContain("123456");
-    expect(text).toContain("10 minutes");
-    expect(html).toContain("123456");
-    expect(html).toContain("10 minutes");
-  });
-});
-
-describe("OTP_MAX_AGE_SECONDS", () => {
-  it("is ten minutes, the window the rate-limit issue is measured against", () => {
-    expect(OTP_MAX_AGE_SECONDS).toBe(600);
   });
 });

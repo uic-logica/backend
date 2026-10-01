@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const contactEmail = requiredText(body.contactEmail, "contactEmail", MAX_SHORT).toLowerCase();
     const detail = requiredText(body.message, "message", MAX_LONG);
     const link = optionalLink(body.link);
-    // Partners are external, so the UIC-only isAllowedEmail check must not be used here.
+    // Partners are external, so the UIC-only check in lib/allowed-email must not be used here.
     if (!EMAIL_RE.test(contactEmail)) throw new Error("`contactEmail` must be a valid email address.");
 
     const kind = "OUTREACH" as const;

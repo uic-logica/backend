@@ -1,5 +1,5 @@
 import type { ApplicationStatus, ApplicationTrack, TeamProject } from "@prisma/client";
-import { isAllowedEmail } from "./otp";
+import { isAllowedEmail } from "./allowed-email";
 
 // ApplicationTrack is every stored value; TRACKS is what new public applications accept.
 export const TRACKS = ["SOFTWARE_ENGINEER", "BOARD_MEMBER"] as const satisfies readonly ApplicationTrack[];

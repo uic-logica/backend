@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAllowedEmail } from "@/lib/otp";
+import { isAllowedEmail } from "@/lib/allowed-email";
 import { prisma } from "@/lib/prisma";
 import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
 
