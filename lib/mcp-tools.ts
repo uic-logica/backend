@@ -77,6 +77,18 @@ function money(cents: number | null | undefined): string | null {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/** An event's RSVP/page link: http(s) only, so a `javascript:` link can never reach the public page. Empty clears it. */
+function eventLink(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const raw = String(value).trim();
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+  } catch {}
+  fail("`link` must be an http or https URL.");
+}
+
 const WINDOW = {
   type: "object",
   required: ["startDate", "endDate", "startTime", "endTime"],
@@ -578,7 +590,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "create_event",
-    description: "Put a new event on the LOGICA calendar.",
+    description: "Put a new event on the LOGICA calendar. The description keeps its line breaks and emoji on the site, so it can be pasted as written; put the RSVP or sign-up form in `link` to get an RSVP button.",
     stages: WORKSPACE,
     inputSchema: {
       type: "object",
@@ -587,7 +599,8 @@ export const TOOLS: Tool[] = [
         title: str("What the event is called."),
         startsAt: str("When it starts, as an ISO 8601 timestamp."),
         location: str("Where it is."),
-        description: str("A sentence or two about it."),
+        description: str("What it is. Line breaks are kept."),
+        link: str("An http(s) RSVP or event page, shown as an RSVP button."),
       },
       additionalProperties: false,
     },
@@ -602,9 +615,50 @@ export const TOOLS: Tool[] = [
           startsAt,
           location: input.location === undefined ? undefined : String(input.location),
           description: input.description === undefined ? undefined : String(input.description),
+          link: eventLink(input.link),
         },
       });
-      return { id: event.id, title: event.title, startsAt: event.startsAt };
+      return { id: event.id, title: event.title, startsAt: event.startsAt, link: event.link };
+    },
+  },
+  {
+    name: "update_event",
+    description: "Change an event that's already on the calendar: fix its title, time, place, description or RSVP link. Only the fields you send change; send an empty string to clear location, description or link.",
+    stages: WORKSPACE,
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: str("The event's id, from list_events."),
+        title: str("New title."),
+        startsAt: str("New start time, as an ISO 8601 timestamp."),
+        location: str("New location, or empty to clear it."),
+        description: str("New description, or empty to clear it. Line breaks are kept."),
+        link: str("New http(s) RSVP or event page, or empty to clear it."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const id = String(input.id ?? "");
+      if (!(await prisma.event.findUnique({ where: { id }, select: { id: true } }))) fail("No event with that id.");
+      const data: Prisma.EventUpdateInput = {};
+      if (input.title !== undefined) {
+        const title = String(input.title).trim();
+        if (!title) fail("`title` can't be empty.");
+        data.title = title;
+      }
+      if (input.startsAt !== undefined) {
+        const startsAt = new Date(String(input.startsAt));
+        if (Number.isNaN(startsAt.getTime())) fail("`startsAt` must be an ISO 8601 timestamp.");
+        data.startsAt = startsAt;
+      }
+      for (const field of ["location", "description"] as const) {
+        if (input[field] !== undefined) data[field] = input[field] === null || input[field] === "" ? null : String(input[field]);
+      }
+      if (input.link !== undefined) data.link = eventLink(input.link) ?? null;
+      if (Object.keys(data).length === 0) fail("Send at least one field to change.");
+      const event = await prisma.event.update({ where: { id }, data });
+      return { id: event.id, title: event.title, startsAt: event.startsAt, location: event.location, link: event.link };
     },
   },
 
