@@ -4,7 +4,7 @@
  * logica-lean: the counter lives in one server process's memory — it resets on
  * redeploy, and a multi-instance deploy multiplies the effective ceiling by the
  * number of instances. Revisit when we run more than one instance. Sign-in
- * codes don't use this; they're limited in Postgres (lib/sign-in-limit.ts).
+ * Member password attempts use a persistent Postgres limit in lib/member-password.ts.
  */
 const windows = new Map<string, { count: number; resetAt: number }>();
 

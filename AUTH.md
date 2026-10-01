@@ -65,6 +65,6 @@ There are **38 registered tools** in `lib/mcp-tools.ts`. None can issue or reset
 
 ## Retired paths
 
-`POST /api/auth/otp/verify` returns 410. `GET /api/dev/login` returns 404. Tests beside both handlers check the retirement. With `providers: []` in `auth.ts`, the old Nodemailer provider is not registered. Passwordless source remains under `archive/passwordless/`; it is not an active sign-in system.
+`POST /api/auth/otp/verify` returns 410. `GET /api/dev/login` returns 404. Tests beside both handlers check the retirement. With `providers: []` in `auth.ts`, the old Nodemailer provider is not registered. Historical passwordless snapshots remain under `archive/passwordless/`; their former supporting modules have been deleted.
 
 The paired frontend's `/signin` still advertises passwordless login and calls those retired paths. That is an integration bug, not a supported alternative.
