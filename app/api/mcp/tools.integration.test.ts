@@ -116,10 +116,32 @@ describe.skipIf(!process.env.CI || !process.env.DATABASE_URL)("MCP tools end to 
     await call("EXEC_BOARD", "list_guests", { readyToDecide: true });
     await call("EXEC_BOARD", "common_slots", { guestIds: [ids.confirmed, ids.pending] });
     await call("EXEC_BOARD", "reply_to_guest", { submissionId: ids.pending, body: "Thanks, we'll confirm soon." });
-    const event = await call("EXEC_BOARD", "create_event", { title: `${tag} guest talk`, startsAt: new Date(Date.now() + 8 * 864e5).toISOString() });
+    const event = await call("EXEC_BOARD", "create_event", {
+      title: `${tag} guest talk`,
+      startsAt: new Date(Date.now() + 8 * 864e5).toISOString(),
+      description: "📊 Line one\n🍕 Line two",
+      link: "https://forms.gle/example",
+    });
+    expect(event.link).toBe("https://forms.gle/example");
     await call("EXEC_BOARD", "decide_on_guest", { submissionId: ids.pending, decision: "CONFIRMED" });
     expect((await call("EXEC_BOARD", "schedule_guest", { submissionId: ids.pending, eventId: event.id })).eventId).toBe(event.id);
     await call("EXEC_BOARD", "invite_guest", { name: `${tag} guest`, email: `${tag}-gina@example.com`, kind: "TALK" });
+  });
+
+  it("edits an event without touching what it wasn't sent", async () => {
+    const before = await prisma.event.findUniqueOrThrow({ where: { id: ids.event } });
+    const updated = await call("EXEC_BOARD", "update_event", { id: ids.event, description: "🔥 New line\n📍 Room 1413", link: "https://forms.gle/rsvp" });
+    expect(updated).toMatchObject({ title: before.title, location: before.location, link: "https://forms.gle/rsvp" });
+    const row = await prisma.event.findUniqueOrThrow({ where: { id: ids.event } });
+    // Line breaks and emoji survive the round trip; the time didn't move.
+    expect(row.description).toBe("🔥 New line\n📍 Room 1413");
+    expect(row.startsAt.getTime()).toBe(before.startsAt.getTime());
+    await call("EXEC_BOARD", "update_event", { id: ids.event, link: "" });
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: ids.event } })).link).toBeNull();
+    await refused("EXEC_BOARD", "update_event", { id: ids.event, link: "javascript:alert(1)" });
+    await refused("EXEC_BOARD", "update_event", { id: ids.event, title: " " });
+    await refused("EXEC_BOARD", "update_event", { id: "no-such-event", title: "x" });
+    await refused("MEMBER", "update_event", { id: ids.event, title: "hijacked" });
   });
 
   it("re-derives the caller's stage on every call", async () => {
