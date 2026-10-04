@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { parseHttpLink } from "@/lib/link";
 import { prisma } from "@/lib/prisma";
 
 // logica-lean: bare-minimum Event CRUD for #7 (BE 5). No editing — real
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "`startsAt` must be an ISO date string." }, { status: 400 });
   }
   const eventLink = typeof link === "string" ? link.trim() : link == null ? "" : null;
-  if (eventLink === null || (eventLink && !isHttpUrl(eventLink))) {
+  if (eventLink === null || (eventLink && !parseHttpLink(eventLink).ok)) {
     return NextResponse.json({ error: "`link` must be an http or https URL." }, { status: 400 });
   }
 
@@ -49,11 +50,3 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(event, { status: 201 });
 }
 
-function isHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}

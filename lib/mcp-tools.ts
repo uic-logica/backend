@@ -1,6 +1,7 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
+import { parseHttpLink } from "@/lib/link";
 import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
 import { type Stage, STAGE_LABELS, runsTheClub } from "@/lib/stage";
@@ -81,12 +82,9 @@ function money(cents: number | null | undefined): string | null {
 function eventLink(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
-  const raw = String(value).trim();
-  try {
-    const url = new URL(raw);
-    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
-  } catch {}
-  fail("`link` must be an http or https URL.");
+  const parsed = parseHttpLink(String(value));
+  if (!parsed.ok) fail("`link` must be an http or https URL.");
+  return parsed.url;
 }
 
 const WINDOW = {
