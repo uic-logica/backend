@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { mintToken } from "@/lib/mcp-token";
-import { toolSummary } from "@/lib/mcp-tools";
+import { EXAMPLE_ASK, toolSummary } from "@/lib/mcp-tools";
 import { prisma } from "@/lib/prisma";
 import { STAGE_LABELS, stageOf } from "@/lib/stage";
 
@@ -44,6 +44,7 @@ export async function GET() {
     role: STAGE_LABELS[user.stage],
     tokens,
     tools: toolSummary(user.stage),
+    example: EXAMPLE_ASK[user.stage],
   });
 }
 
