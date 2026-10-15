@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { type EmailContent, renderEmail } from "@/lib/email-layout";
 import { frontendOrigin } from "@/lib/linkedin-oauth";
+import { logEmail } from "@/lib/email-log";
 import { sendMail } from "@/lib/mailer";
 
 type Category = "eventReminders" | "announcements";
@@ -31,6 +32,7 @@ export async function notifyUser(
   if (!user) return;
   if (pref && pref[category] === false) {
     console.info(`email skipped: "${subject}", ${category} turned off`);
+    await logEmail({ to: user.email, subject, status: "SKIPPED", error: category === "eventReminders" ? "Event emails are off in their settings" : "Announcements are off in their settings" });
     return;
   }
   await emailTo(user.email, subject, content ?? message);

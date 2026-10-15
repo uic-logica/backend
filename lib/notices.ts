@@ -1,6 +1,7 @@
 import { eventDetails, when } from "@/lib/event-when";
 import { frontendOrigin } from "@/lib/linkedin-oauth";
 import { applicantNotice } from "@/lib/membership-application";
+import { logEmail } from "@/lib/email-log";
 import { emailTo, tell } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
@@ -101,7 +102,10 @@ export async function noticeRsvp(userId: string, eventId: string, previous: stri
     prisma.event.findUnique({ where: { id: eventId }, select: { title: true, startsAt: true, location: true, link: true } }),
   ]);
   if (!user || !event) return;
-  if (pref?.eventReminders === false) return console.info("email skipped: RSVP confirmation, event emails turned off");
+  if (pref?.eventReminders === false) {
+    console.info("email skipped: RSVP confirmation, event emails turned off");
+    return logEmail({ to: user.email, subject: `You're going: ${event.title}`, status: "SKIPPED", error: "Event emails are off in their settings" });
+  }
   await emailTo(user.email, `You're going: ${event.title}`, {
     preheader: when(event),
     eyebrow: "RSVP confirmed",
