@@ -1,6 +1,6 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { eventLink, parseEventUpdate } from "@/lib/event-update";
+import { eventLink, parseEventUpdate, parseStartsAt } from "@/lib/event-update";
 import { notifyUser } from "@/lib/notify";
 import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
@@ -314,8 +314,8 @@ export const TOOLS: Tool[] = [
     inputSchema: none,
     run: async (_input, caller) => {
       const events = await prisma.event.findMany({
-        where: { startsAt: { gte: new Date() } },
-        orderBy: { startsAt: "asc" },
+        where: { OR: [{ startsAt: { gte: new Date() } }, { startsAt: null }] },
+        orderBy: { startsAt: { sort: "asc", nulls: "last" } },
         take: 25,
         include: { rsvps: { where: { userId: caller.id }, select: { status: true } } },
       });
@@ -604,10 +604,10 @@ export const TOOLS: Tool[] = [
     stages: WORKSPACE,
     inputSchema: {
       type: "object",
-      required: ["title", "startsAt"],
+      required: ["title"],
       properties: {
         title: str("What the event is called."),
-        startsAt: str("When it starts, as an ISO 8601 timestamp."),
+        startsAt: str("When it starts, as an ISO 8601 timestamp. Leave it out (or send \"TBD\") if the date isn't set yet."),
         location: str("Where it is."),
         description: str("What it is. Line breaks are kept."),
         link: str("An http(s) RSVP or event page, shown as an RSVP button."),
@@ -615,8 +615,12 @@ export const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (input) => {
-      const startsAt = new Date(String(input.startsAt ?? ""));
-      if (Number.isNaN(startsAt.getTime())) fail("`startsAt` must be an ISO 8601 timestamp.");
+      let startsAt: Date | null = null;
+      try {
+        startsAt = input.startsAt === undefined ? null : parseStartsAt(input.startsAt);
+      } catch (error) {
+        fail((error as Error).message);
+      }
       const title = String(input.title ?? "").trim();
       if (!title) fail("`title` is required.");
       const event = await prisma.event.create({
@@ -642,7 +646,7 @@ export const TOOLS: Tool[] = [
       properties: {
         id: str("The event's id, from list_events."),
         title: str("New title."),
-        startsAt: str("New start time, as an ISO 8601 timestamp."),
+        startsAt: str("New start time, as an ISO 8601 timestamp, or \"TBD\" to clear the date."),
         location: str("New location, or empty to clear it."),
         description: str("New description, or empty to clear it. Line breaks are kept."),
         link: str("New http(s) RSVP or event page, or empty to clear it."),
