@@ -192,7 +192,7 @@ model Event {
   location    String?
   // The one public URL for an event: a Luma page, a Discord invite, or a flyer.
   link        String?
-  startsAt    DateTime
+  startsAt    DateTime? // null = date TBD: listed as upcoming, no reminders or calendar file until it's set
   createdAt   DateTime  @default(now())
   remindedAt  DateTime? // set once the cron job (app/api/cron/event-reminders) has notified GOING rsvps
 

@@ -24,6 +24,14 @@ export function eventLink(value: unknown): string | null | undefined {
  * only the fields sent change, and an empty string clears location,
  * description or link.
  */
+/** An event's start: an ISO 8601 timestamp, or null / "" / "TBD" for a date that isn't set yet. */
+export function parseStartsAt(value: unknown): Date | null {
+  if (value === null || value === "" || (typeof value === "string" && value.trim().toUpperCase() === "TBD")) return null;
+  const startsAt = new Date(String(value));
+  if (Number.isNaN(startsAt.getTime())) throw new EventInputError("`startsAt` must be an ISO 8601 timestamp, or null for TBD.");
+  return startsAt;
+}
+
 export function parseEventUpdate(input: Record<string, unknown>): Prisma.EventUpdateInput {
   const data: Prisma.EventUpdateInput = {};
   if (input.title !== undefined) {
@@ -31,11 +39,7 @@ export function parseEventUpdate(input: Record<string, unknown>): Prisma.EventUp
     if (!title) throw new EventInputError("`title` can't be empty.");
     data.title = title;
   }
-  if (input.startsAt !== undefined) {
-    const startsAt = new Date(String(input.startsAt));
-    if (Number.isNaN(startsAt.getTime())) throw new EventInputError("`startsAt` must be an ISO 8601 timestamp.");
-    data.startsAt = startsAt;
-  }
+  if (input.startsAt !== undefined) data.startsAt = parseStartsAt(input.startsAt);
   for (const field of ["location", "description"] as const) {
     if (input[field] !== undefined) data[field] = input[field] === null || input[field] === "" ? null : String(input[field]);
   }

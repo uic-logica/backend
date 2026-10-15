@@ -135,7 +135,7 @@ describe.skipIf(!process.env.CI || !process.env.DATABASE_URL)("MCP tools end to 
     const row = await prisma.event.findUniqueOrThrow({ where: { id: ids.event } });
     // Line breaks and emoji survive the round trip; the time didn't move.
     expect(row.description).toBe("🔥 New line\n📍 Room 1413");
-    expect(row.startsAt.getTime()).toBe(before.startsAt.getTime());
+    expect(row.startsAt).toEqual(before.startsAt);
     await call("EXEC_BOARD", "update_event", { id: ids.event, link: "" });
     expect((await prisma.event.findUniqueOrThrow({ where: { id: ids.event } })).link).toBeNull();
     await refused("EXEC_BOARD", "update_event", { id: ids.event, link: "javascript:alert(1)" });
