@@ -1,16 +1,16 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { auth } from "@/auth";
+import { partnerAuth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { PATCH } from "./route";
 
-vi.mock("@/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/auth", () => ({ partnerAuth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { event: { findUnique: vi.fn(), update: vi.fn() } },
+  prisma: { event: { findUnique: vi.fn(), update: vi.fn() }, eventAccess: { findUnique: vi.fn() } },
 }));
 
 const as = (role: string, accountKind = "MEMBER") =>
-  vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role, accountKind }, expires: "" } as never);
+  vi.mocked(partnerAuth).mockResolvedValue({ user: { id: "u1", role, accountKind }, expires: "" } as never);
 const patch = (body: unknown) =>
   PATCH(new NextRequest("http://localhost/api/events/e1", { method: "PATCH", body: JSON.stringify(body) }), {
     params: Promise.resolve({ id: "e1" }),
@@ -35,8 +35,21 @@ describe("PATCH /api/events/:id", () => {
     expect((await patch({ title: "x" })).status).toBe(403);
     as("BOARD", "SPEAKER");
     expect((await patch({ title: "x" })).status).toBe(403);
-    vi.mocked(auth).mockResolvedValue(null as never);
+    vi.mocked(partnerAuth).mockResolvedValue(null as never);
     expect((await patch({ title: "x" })).status).toBe(401);
+    expect(prisma.event.update).not.toHaveBeenCalled();
+  });
+
+  it("lets a partner club edit an event it was granted, and no other", async () => {
+    as("MEMBER", "PARTNER");
+    vi.mocked(prisma.eventAccess.findUnique).mockResolvedValue({ userId: "u1", eventId: "e1" } as never);
+    expect((await patch({ location: "SCE 605" })).status).toBe(200);
+    expect(prisma.eventAccess.findUnique).toHaveBeenCalledWith({
+      where: { userId_eventId: { userId: "u1", eventId: "e1" } },
+    });
+    vi.mocked(prisma.eventAccess.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.event.update).mockClear();
+    expect((await patch({ location: "x" })).status).toBe(403);
     expect(prisma.event.update).not.toHaveBeenCalled();
   });
 
