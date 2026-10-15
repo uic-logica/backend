@@ -1,3 +1,4 @@
+import type { EmailContent } from "@/lib/email-layout";
 import { frontendOrigin } from "@/lib/linkedin-oauth";
 import type { ApplicationStatus, ApplicationTrack, TeamProject } from "@prisma/client";
 import { isAllowedEmail } from "./otp";
@@ -149,18 +150,62 @@ export function reapplyBlock(past: PastApplication[], now = new Date()): string 
   return null;
 }
 
-/** What the applicant reads for each decision. PENDING sends nothing. */
-export function applicantMessage(status: string, role: string, note: string, canReapply: boolean): string | null {
+/** What the applicant reads for each decision (in-app line and email). PENDING sends nothing. */
+export function applicantNotice(
+  status: string,
+  role: string,
+  note: string,
+  canReapply: boolean,
+): { message: string; content: EmailContent } | null {
   const dashboard = `${frontendOrigin()}/dashboard`;
   switch (status) {
     case "INTERVIEW":
-      return `LOGICA would like to talk with you about your ${role} application. Someone from the board will reach out to set up a time.`;
+      return {
+        message: `LOGICA would like to talk with you about your ${role} application. Someone from the board will reach out to set up a time.`,
+        content: {
+          preheader: "The board would like to talk with you.",
+          eyebrow: "Application update",
+          heading: "Let's talk",
+          paragraphs: [`The board read your ${role} application and would like to talk with you. Someone will reach out soon to set up a time.`],
+          button: { label: "Open your dashboard", url: dashboard },
+        },
+      };
     case "NEEDS_INFO":
-      return `LOGICA needs a bit more on your ${role} application:\n\n${note}\n\nUpdate it here: ${dashboard}`;
+      return {
+        message: `LOGICA needs a bit more on your ${role} application: ${note}`,
+        content: {
+          preheader: "The board has one ask about your application.",
+          eyebrow: "Application update",
+          heading: "We need a bit more",
+          paragraphs: [`The board read your ${role} application and has one ask:`],
+          quote: note,
+          button: { label: "Update your application", url: dashboard },
+        },
+      };
     case "ACCEPTED":
-      return `You're in: your ${role} application to LOGICA was accepted. Next steps are in your dashboard: ${dashboard}`;
+      return {
+        message: `You're in: your ${role} application to LOGICA was accepted. Next steps are in your dashboard.`,
+        content: {
+          preheader: `Your ${role} application was accepted.`,
+          eyebrow: "Welcome to LOGICA",
+          heading: "You're in",
+          paragraphs: [`Your ${role} application was accepted. Your next steps are waiting in your dashboard.`],
+          button: { label: "See next steps", url: dashboard },
+        },
+      };
     case "DECLINED":
-      return `Thank you for applying to LOGICA. We can't offer you a ${role} spot this time.${canReapply ? " You're welcome to apply again next semester." : ""}`;
+      return {
+        message: `Thank you for applying to LOGICA. We can't offer you a ${role} spot this time.${canReapply ? " You're welcome to apply again next semester." : ""}`,
+        content: {
+          eyebrow: "Application update",
+          heading: "Thank you for applying",
+          paragraphs: [
+            `We can't offer you a ${role} spot this time.${canReapply ? " You're welcome to apply again next semester." : ""}`,
+            "Our events stay open to you.",
+          ],
+          button: { label: "See upcoming events", url: `${frontendOrigin()}/events` },
+        },
+      };
     default:
       return null;
   }
