@@ -201,7 +201,7 @@ model Event {
   checkInCode CheckInCode?
   posts       Post[]
   materials   EventMaterial[]
-  speaker     SpeakerSubmission?
+  speakers    SpeakerSubmission[]
   boardItems  BoardItem[]
   partners    EventAccess[]
 }
@@ -415,7 +415,7 @@ model SpeakerSubmission {
   // there is one, which is what turns on the talk's attendance numbers.
   talkTitle String?
   slidesUrl String? // a link, not a file — so it opens on whatever machine is in the room
-  eventId   String? @unique
+  eventId   String? // several guests can share one event (a panel, co-founders)
 
   // Two confirmations, in order. The candidate confirms their availability
   // is final, which is the signal the board can act on; the board then
