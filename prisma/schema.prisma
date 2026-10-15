@@ -19,6 +19,7 @@ enum Role {
 enum AccountKind {
   MEMBER
   SPEAKER
+  PARTNER // a partner club's board: sees and edits only the events in EventAccess
 }
 
 // What someone does on the board. Purely cosmetic: it decides what gets
@@ -81,10 +82,11 @@ model User {
   speakerMessages   SpeakerMessage[]
   mcpTokens         McpToken[]
 
-  boardItems        BoardItem[] @relation("BoardItemAuthor")
-  ownedBoardItems   BoardItem[] @relation("BoardItemOwner")
-  frontedBoardItems BoardItem[] @relation("BoardItemPaidBy")
-  stagedBoardItems  BoardItem[] @relation("BoardItemStager")
+  boardItems        BoardItem[]   @relation("BoardItemAuthor")
+  ownedBoardItems   BoardItem[]   @relation("BoardItemOwner")
+  frontedBoardItems BoardItem[]   @relation("BoardItemPaidBy")
+  stagedBoardItems  BoardItem[]   @relation("BoardItemStager")
+  eventAccess       EventAccess[]
 }
 
 /**
@@ -201,6 +203,21 @@ model Event {
   materials   EventMaterial[]
   speaker     SpeakerSubmission?
   boardItems  BoardItem[]
+  partners    EventAccess[]
+}
+
+// Which events a PARTNER account can see and edit. Granted and revoked by
+// exec; one account per club, reused across collabs.
+model EventAccess {
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+  @@index([eventId])
 }
 
 // Capture-only list for later export to LOGICA's existing mailing list; this is not a mail or campaign system.

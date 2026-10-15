@@ -7,7 +7,7 @@ import { overAttemptLimit } from "@/lib/rate-limit";
 /**
  * POST { username, password } -> sets the session cookie directly (see
  * lib/session.ts for why this isn't an Auth.js Credentials provider).
- * SPEAKER accounts only.
+ * SPEAKER and PARTNER (partner club) accounts; members use member-login.
  */
 export async function POST(request: NextRequest) {
   let payload: unknown;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const user = await prisma.user.findFirst({
     where: { OR: [{ username }, { email: username }] },
   });
-  if (!user || user.accountKind !== "SPEAKER" || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
+  if (!user || user.accountKind === "MEMBER" || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
     return NextResponse.json({ error: "Incorrect username or password." }, { status: 401 });
   }
 

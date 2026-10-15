@@ -11,7 +11,7 @@ vi.mock("@/lib/prisma", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(auth).mockResolvedValue({ user: { id: "board-1", role: "BOARD" }, expires: "" } as never);
+  vi.mocked(auth).mockResolvedValue({ user: { id: "board-1", role: "BOARD", accountKind: "MEMBER" }, expires: "" } as never);
 });
 
 describe("POST /api/events", () => {
