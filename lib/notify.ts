@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { type EmailContent, renderEmail } from "@/lib/email-layout";
+import { frontendOrigin } from "@/lib/linkedin-oauth";
 import { sendMail } from "@/lib/mailer";
 
 type Category = "eventReminders" | "announcements";
@@ -13,7 +15,13 @@ type Category = "eventReminders" | "announcements";
  * on rather than losing the in-app notification too. Revisit with a real
  * queue if email volume/reliability ever becomes a problem.
  */
-export async function notifyUser(userId: string, message: string, category: Category, subject = "LOGICA @ UIC"): Promise<void> {
+export async function notifyUser(
+  userId: string,
+  message: string,
+  category: Category,
+  subject = "LOGICA @ UIC",
+  content?: EmailContent,
+): Promise<void> {
   await prisma.notification.create({ data: { userId, message } });
 
   const [user, pref] = await Promise.all([
@@ -25,26 +33,21 @@ export async function notifyUser(userId: string, message: string, category: Cate
     console.info(`email skipped: "${subject}", ${category} turned off`);
     return;
   }
-  await emailTo(user.email, subject, message);
+  await emailTo(user.email, subject, content ?? message);
 }
 
-const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+/** A plain notification as an email: its paragraphs and a button to the dashboard. */
+const plain = (message: string): EmailContent => ({
+  paragraphs: message.split(/\n{2,}/),
+  button: { label: "Open your dashboard", url: `${frontendOrigin()}/dashboard` },
+});
 
-/** One plain email; a failed send logs and moves on (see notifyUser). */
-export async function emailTo(to: string, subject: string, message: string): Promise<void> {
+/** One email in the LOGICA layout; a failed send logs and moves on (see notifyUser). */
+export async function emailTo(to: string, subject: string, content: EmailContent | string): Promise<void> {
   // Domain only in logs: enough to see "sent to uic.edu" without storing addresses.
   const domain = to.split("@")[1] ?? "?";
   try {
-    await sendMail({
-      to,
-      subject,
-      text: message,
-      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px;line-height:1.5">${escapeHtml(message)
-        .split(/\n{2,}/)
-        .map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, "<br>")}</p>`)
-        .join("")}</div>`,
-    });
+    await sendMail({ to, subject, ...renderEmail(typeof content === "string" ? plain(content) : content) });
     console.info(`email sent: "${subject}" to @${domain}`);
   } catch (err) {
     console.error(`email failed: "${subject}" to @${domain}`, err);
@@ -60,21 +63,28 @@ export async function tell(
   person: { userId?: string | null; email?: string | null },
   message: string,
   subject: string,
+  content?: EmailContent,
   category: Category = "announcements",
 ): Promise<void> {
   try {
-    if (person.userId) await notifyUser(person.userId, message, category, subject);
-    else if (person.email) await emailTo(person.email, subject, message);
+    if (person.userId) await notifyUser(person.userId, message, category, subject, content);
+    else if (person.email) await emailTo(person.email, subject, content ?? message);
   } catch (err) {
     console.error("tell: notification failed", err);
   }
 }
 
 /** Notifies every user RSVP'd GOING to an event — used by the event feed and material uploads. */
-export async function notifyEventGoing(eventId: string, message: string, category: Category, exceptUserId?: string): Promise<void> {
+export async function notifyEventGoing(
+  eventId: string,
+  message: string,
+  category: Category,
+  exceptUserId?: string,
+  email?: { subject: string; content: EmailContent },
+): Promise<void> {
   const rsvps = await prisma.rsvp.findMany({
     where: { eventId, status: "GOING", ...(exceptUserId && { userId: { not: exceptUserId } }) },
     select: { userId: true },
   });
-  await Promise.all(rsvps.map((r) => notifyUser(r.userId, message, category)));
+  await Promise.all(rsvps.map((r) => notifyUser(r.userId, message, category, email?.subject, email?.content)));
 }

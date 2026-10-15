@@ -1,6 +1,6 @@
-import { when } from "@/lib/event-when";
+import { eventDetails, when } from "@/lib/event-when";
 import { frontendOrigin } from "@/lib/linkedin-oauth";
-import { applicantMessage } from "@/lib/membership-application";
+import { applicantNotice } from "@/lib/membership-application";
 import { emailTo, tell } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
@@ -21,47 +21,70 @@ export async function noticeApplicant(
 ) {
   if (status === app.status && status !== "NEEDS_INFO") return;
   const role = app.track === "BOARD_MEMBER" ? "board member" : "Software Teams";
-  const message = applicantMessage(status, role, note, canReapply);
-  if (!message) return;
+  const notice = applicantNotice(status, role, note, canReapply);
+  if (!notice) return;
   const userId = app.userId ?? (await prisma.user.findUnique({ where: { email: app.email }, select: { id: true } }))?.id;
-  await tell({ userId, email: app.email }, message, `Your LOGICA ${role} application`);
+  await tell({ userId, email: app.email }, notice.message, `Your LOGICA ${role} application`, notice.content);
 }
+
+const portal = () => `${frontendOrigin()}/dashboard`;
 
 /** A guest was confirmed or declined. */
 export async function noticeGuestDecision(guest: Person, previous: string, status: string) {
   if (status === previous || (status !== "CONFIRMED" && status !== "DECLINED")) return;
-  await tell(
-    guest,
-    status === "CONFIRMED"
-      ? `You're confirmed to speak at LOGICA @ UIC. Your talk details are in your portal: ${frontendOrigin()}/dashboard`
-      : "Thank you for your interest in speaking at LOGICA @ UIC. We can't fit your talk in this time.",
-    status === "CONFIRMED" ? "You're confirmed to speak at LOGICA" : "Your LOGICA speaker submission",
-  );
+  if (status === "CONFIRMED") {
+    await tell(guest, "You're confirmed to speak at LOGICA @ UIC. Your talk details are in your portal.", "You're confirmed to speak at LOGICA", {
+      preheader: "Your talk details are in your speaker portal.",
+      eyebrow: "Speaker confirmed",
+      heading: "You're speaking at LOGICA",
+      paragraphs: ["Thank you for saying yes. Your talk details, the schedule and your thread with the board are in your speaker portal."],
+      button: { label: "Open your portal", url: portal() },
+    });
+  } else {
+    await tell(guest, "Thank you for your interest in speaking at LOGICA @ UIC. We can't fit your talk in this time.", "Your LOGICA speaker submission", {
+      heading: "Thank you for your interest",
+      paragraphs: ["We can't fit your talk in this time. Thank you for offering to share it with LOGICA."],
+    });
+  }
 }
 
 /** A guest's talk got (or changed) its event. */
 export async function noticeGuestScheduled(guest: Person, event: { title: string; startsAt: Date | null; location: string | null }) {
-  await tell(guest, `Your talk is on the LOGICA calendar: ${event.title}, ${when(event)}.`, "Your LOGICA talk is scheduled");
+  await tell(guest, `Your talk is on the LOGICA calendar: ${event.title}, ${when(event)}.`, "Your LOGICA talk is scheduled", {
+    preheader: `${event.title}: ${when(event)}`,
+    eyebrow: "Talk scheduled",
+    heading: event.title,
+    paragraphs: ["Your talk is on the LOGICA calendar."],
+    details: eventDetails(event),
+    button: { label: "Open your portal", url: portal() },
+  });
 }
 
 /** The board wrote in a guest's thread. */
 export async function noticeGuestMessage(guest: Person, text: string) {
-  await tell(guest, `The LOGICA board wrote about your talk:\n\n${text}\n\nReply in your portal: ${frontendOrigin()}/dashboard`, "New message from LOGICA");
+  await tell(guest, `The LOGICA board wrote about your talk: ${text}`, "New message from LOGICA", {
+    preheader: text.slice(0, 120),
+    eyebrow: "Message from the board",
+    heading: "The LOGICA board wrote to you",
+    paragraphs: [],
+    quote: text,
+    button: { label: "Reply in your portal", url: portal() },
+  });
 }
 
 /** A guest wrote in their thread: every exec hears about it. */
 export async function noticeExecsOfReply(submissionId: string, guestName: string | null, text: string) {
   const execs = await prisma.user.findMany({ where: { accountKind: "MEMBER", role: "EXEC_BOARD" }, select: { id: true } });
   const name = guestName || "A guest";
-  await Promise.all(
-    execs.map((e) =>
-      tell(
-        { userId: e.id },
-        `${name} wrote in their speaker thread:\n\n${text}\n\n${frontendOrigin()}/dashboard/speakers?id=${submissionId}`,
-        `${name} replied in their thread`,
-      ),
-    ),
-  );
+  const content = {
+    preheader: text.slice(0, 120),
+    eyebrow: "Speaker thread",
+    heading: `${name} replied`,
+    paragraphs: [],
+    quote: text,
+    button: { label: "Open the thread", url: `${frontendOrigin()}/dashboard/speakers?id=${submissionId}` },
+  };
+  await Promise.all(execs.map((e) => tell({ userId: e.id }, `${name} wrote in their speaker thread: ${text}`, `${name} replied in their thread`, content)));
 }
 
 /**
@@ -78,10 +101,13 @@ export async function noticeRsvp(userId: string, eventId: string, previous: stri
   ]);
   if (!user || !event) return;
   if (pref?.eventReminders === false) return console.info("email skipped: RSVP confirmation, event emails turned off");
-  const reminder = event.startsAt ? " We'll remind you the day before." : " We'll email you when the date is set.";
-  await emailTo(
-    user.email,
-    `You're going: ${event.title}`,
-    `You're going to ${event.title}, ${when(event)}.${reminder}${event.link ? `\n\nEvent page: ${event.link}` : ""}`,
-  );
+  await emailTo(user.email, `You're going: ${event.title}`, {
+    preheader: when(event),
+    eyebrow: "RSVP confirmed",
+    heading: `You're going to ${event.title}`,
+    paragraphs: [event.startsAt ? "We'll send you a reminder the day before." : "The date isn't set yet. We'll email you when it is."],
+    details: eventDetails(event),
+    button: event.link ? { label: "Event page", url: event.link } : { label: "View event", url: `${frontendOrigin()}/events/${eventId}` },
+    footnote: "Can't make it anymore? Change your RSVP in your dashboard.",
+  });
 }
