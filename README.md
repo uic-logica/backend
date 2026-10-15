@@ -41,6 +41,7 @@ For local signup, `ALLOWED_EMAIL_DOMAIN` must be a real domain such as `uic.edu`
 | --- | --- | --- |
 | Account access | `/api/auth/signup`, `/api/auth/member-login`, speaker login and invites | Public entry points; protected mutations require the relevant session |
 | Events and participation | `/api/events`, `/api/attendance`, `/api/posts`, `/api/forms` | Public reads where supported; signed-in members for participation; BOARD/EXEC_BOARD create and edit events (`PATCH /api/events/:id`, same rules as the MCP `update_event` tool) and run check-in |
+| Blog | `/api/blog`, `/api/blog/:slug`, `/api/blog/mine`, `/api/blog/review` | Public reads of published posts; MEMBER accounts write, submit and withdraw their own; EXEC_BOARD publishes, sends back with a note or unpublishes |
 | Software Teams applications | `/api/join`, `/api/join/mine` | `SOFTWARE_ENGINEER` submission requires a signed-in `@uic.edu` member; BOARD/EXEC_BOARD reviews |
 | Member workspace | `/api/dashboard`, profiles, notifications, MCP tokens | Signed-in account; responses are scoped to the caller |
 | Exec workspace | `/api/board/*`, speaker review and scheduling | MEMBER account with EXEC_BOARD role; BOARD keeps the member workspace view |
