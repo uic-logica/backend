@@ -1,5 +1,6 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { eventLink, parseEventUpdate } from "@/lib/event-update";
 import { notifyUser } from "@/lib/notify";
 import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
@@ -78,16 +79,6 @@ function money(cents: number | null | undefined): string | null {
 }
 
 /** An event's RSVP/page link: http(s) only, so a `javascript:` link can never reach the public page. Empty clears it. */
-function eventLink(value: unknown): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null || value === "") return null;
-  const raw = String(value).trim();
-  try {
-    const url = new URL(raw);
-    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
-  } catch {}
-  fail("`link` must be an http or https URL.");
-}
 
 const WINDOW = {
   type: "object",
@@ -641,22 +632,7 @@ export const TOOLS: Tool[] = [
     run: async (input) => {
       const id = String(input.id ?? "");
       if (!(await prisma.event.findUnique({ where: { id }, select: { id: true } }))) fail("No event with that id.");
-      const data: Prisma.EventUpdateInput = {};
-      if (input.title !== undefined) {
-        const title = String(input.title).trim();
-        if (!title) fail("`title` can't be empty.");
-        data.title = title;
-      }
-      if (input.startsAt !== undefined) {
-        const startsAt = new Date(String(input.startsAt));
-        if (Number.isNaN(startsAt.getTime())) fail("`startsAt` must be an ISO 8601 timestamp.");
-        data.startsAt = startsAt;
-      }
-      for (const field of ["location", "description"] as const) {
-        if (input[field] !== undefined) data[field] = input[field] === null || input[field] === "" ? null : String(input[field]);
-      }
-      if (input.link !== undefined) data.link = eventLink(input.link) ?? null;
-      if (Object.keys(data).length === 0) fail("Send at least one field to change.");
+      const data = parseEventUpdate(input);
       const event = await prisma.event.update({ where: { id }, data });
       return { id: event.id, title: event.title, startsAt: event.startsAt, location: event.location, link: event.link };
     },
