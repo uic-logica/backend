@@ -20,15 +20,18 @@ export async function noticeApplicant(
   status: string,
   note = "",
   canReapply = true,
-) {
-  if (status === app.status && status !== "NEEDS_INFO") return;
+  resend = false,
+): Promise<boolean> {
+  // A repeat of the same status sends nothing, unless the board asks to resend.
+  if (!resend && status === app.status && status !== "NEEDS_INFO") return false;
   const role = app.track === "BOARD_MEMBER" ? "board member" : "Software Teams";
   // Moving to INTERVIEW sends a private link to share when they can meet.
   const interviewLink = status === "INTERVIEW" ? await openInterview(app.id) : undefined;
   const notice = applicantNotice(status, role, note, canReapply, interviewLink);
-  if (!notice) return;
+  if (!notice) return false;
   const userId = app.userId ?? (await prisma.user.findUnique({ where: { email: app.email }, select: { id: true } }))?.id;
   await tell({ userId, email: app.email }, notice.message, `Your LOGICA ${role} application`, notice.content);
+  return true;
 }
 
 const portal = () => `${frontendOrigin()}/dashboard`;
