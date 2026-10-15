@@ -3,16 +3,21 @@ import { createTransport } from "nodemailer";
 // `|| 587` (not `??`) so an empty EMAIL_SERVER_PORT="" falls back too.
 const port = Number(process.env.EMAIL_SERVER_PORT) || 587;
 
-const smtp = {
-  host: process.env.EMAIL_SERVER_HOST,
-  port,
-  // 465 is implicit TLS; everything else (587, 25) starts plaintext and upgrades via STARTTLS.
-  secure: port === 465,
-  auth: {
-    user: process.env.EMAIL_SERVER_USER,
-    pass: process.env.EMAIL_SERVER_PASSWORD,
-  },
-};
+// Resend (installed from the Vercel Marketplace, which sets RESEND_API_KEY)
+// when it's there; otherwise the plain SMTP settings (Gmail, Ethereal in dev).
+// Resend speaks SMTP too, so nodemailer stays the one sender.
+const smtp = process.env.RESEND_API_KEY
+  ? { host: "smtp.resend.com", port: 465, secure: true, auth: { user: "resend", pass: process.env.RESEND_API_KEY } }
+  : {
+      host: process.env.EMAIL_SERVER_HOST,
+      port,
+      // 465 is implicit TLS; everything else (587, 25) starts plaintext and upgrades via STARTTLS.
+      secure: port === 465,
+      auth: {
+        user: process.env.EMAIL_SERVER_USER,
+        pass: process.env.EMAIL_SERVER_PASSWORD,
+      },
+    };
 
 /**
  * Shared SMTP sender — same server config `auth.ts`'s Nodemailer provider
@@ -30,13 +35,15 @@ export async function sendMail({
   text: string;
   html: string;
 }): Promise<void> {
-  if (!process.env.EMAIL_SERVER_HOST || !process.env.EMAIL_FROM) {
-    throw new Error("EMAIL_SERVER_HOST and EMAIL_FROM must be set to send email");
+  if (!smtp.host || !process.env.EMAIL_FROM) {
+    throw new Error("Set RESEND_API_KEY (or EMAIL_SERVER_HOST) and EMAIL_FROM to send email");
   }
 
   const result = await createTransport(smtp).sendMail({
     to,
     from: process.env.EMAIL_FROM,
+    // Replies to hello@ land in an inbox someone reads.
+    ...(process.env.EMAIL_REPLY_TO && { replyTo: process.env.EMAIL_REPLY_TO }),
     subject,
     text,
     html,
