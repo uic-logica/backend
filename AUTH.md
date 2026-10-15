@@ -49,6 +49,15 @@ The frontend sends these guests to `/speaker-signin/set-password`. `POST /api/au
 
 The public speaker intake (`POST /api/speakers`) and old `/speak/[id]` completion flow create/update submissions, not accounts. Guest accounts require an invitation.
 
+## Partner clubs
+
+A `PARTNER` account is a partner club's board for a collab. It can see and edit only the events exec grants it in `EventAccess`; it cannot create or delete events.
+
+- **Deny by default.** `auth()` in `auth.ts` returns `null` for a PARTNER session, so every route reads it as signed out. Only `PATCH /api/events/:id` (with an `EventAccess` row), `GET /api/partner-events` and `POST /api/auth/set-password` use `partnerAuth()`. `callerFor` refuses PARTNER MCP tokens.
+- **Sign-in.** Partners use `POST /api/auth/speaker-login` with their email, and must replace the temporary password on first sign-in.
+- **Exec.** `POST /api/partners` `{ name, email }` creates the account or resets its password (returned once). `PATCH /api/partners/:id` `{ eventId, access }` grants or revokes one event. `GET /api/partners` lists them with their events.
+- **What a partner sees.** Its granted events with RSVP and check-in counts, never who.
+
 ## Roles and guest stages
 
 `lib/authz.ts` has separate account-aware board and exec predicates. `runsWorkspace()` is currently `isExecAccount()`. `lib/board-guard.ts` applies that gate to the workspace routes: budgets, items, roster, insights, documents, and credential issuance. BOARD gets the member dashboard and MCP tools for now. `Officer` is a display preference used by the frontend's `BoardHome.tsx`, not an access grant.

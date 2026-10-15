@@ -27,6 +27,7 @@ shared with everyone who is testing.
 | Board | member sign-in | `board1@qa.logica.test`, `board2@…`, `board3@…` |
 | Member | member sign-in | `member1@qa.logica.test` … `member4@…` |
 | Guest | speaker sign-in | `qa-guest-candidate`, `qa-guest-ready`, `qa-guest-speaker`, `qa-guest-declined` |
+| Partner club | speaker sign-in | `qa-partner` (granted the soonest event only) |
 
 Password for every one of them: `logica-qa-2026`
 
