@@ -13,7 +13,7 @@ type Category = "eventReminders" | "announcements";
  * on rather than losing the in-app notification too. Revisit with a real
  * queue if email volume/reliability ever becomes a problem.
  */
-export async function notifyUser(userId: string, message: string, category: Category): Promise<void> {
+export async function notifyUser(userId: string, message: string, category: Category, subject = "LOGICA @ UIC"): Promise<void> {
   await prisma.notification.create({ data: { userId, message } });
 
   const [user, pref] = await Promise.all([
@@ -22,16 +22,45 @@ export async function notifyUser(userId: string, message: string, category: Cate
   ]);
   if (!user) return;
   if (pref && pref[category] === false) return;
+  await emailTo(user.email, subject, message);
+}
 
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** One plain email; a failed send logs and moves on (see notifyUser). */
+export async function emailTo(to: string, subject: string, message: string): Promise<void> {
   try {
     await sendMail({
-      to: user.email,
-      subject: "LOGICA @ UIC",
+      to,
+      subject,
       text: message,
-      html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px"><p style="margin:0">${message}</p></div>`,
+      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px;line-height:1.5">${escapeHtml(message)
+        .split(/\n{2,}/)
+        .map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, "<br>")}</p>`)
+        .join("")}</div>`,
     });
   } catch (err) {
-    console.error(`notifyUser: email failed for ${userId}`, err);
+    console.error(`email to ${to} failed`, err);
+  }
+}
+
+/**
+ * Tell one person something: their account gets the in-app notification and
+ * the email (respecting their preferences); someone without an account yet
+ * (an applicant, a guest before sign-up) is emailed at the address on file.
+ */
+export async function tell(
+  person: { userId?: string | null; email?: string | null },
+  message: string,
+  subject: string,
+  category: Category = "announcements",
+): Promise<void> {
+  try {
+    if (person.userId) await notifyUser(person.userId, message, category, subject);
+    else if (person.email) await emailTo(person.email, subject, message);
+  } catch (err) {
+    console.error("tell: notification failed", err);
   }
 }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { runsWorkspace } from "@/lib/authz";
-import { notifyUser } from "@/lib/notify";
+import { noticeExecsOfReply, noticeGuestMessage } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
 
 const MAX_BODY = 2000;
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const submission = await prisma.speakerSubmission.findUnique({
     where: { id },
-    select: { id: true, name: true, user: { select: { id: true } } },
+    select: { id: true, name: true, email: true, user: { select: { id: true } } },
   });
   if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -82,20 +82,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     include: { author: AUTHOR },
   });
 
-  // Only the speaker gets pinged. Notifying every board member on every
-  // message is noise; they live in the directory. logica-lean: revisit if
-  // the board starts missing threads.
-  if (who.board && submission.user) {
-    try {
-      await notifyUser(
-        submission.user.id,
-        `The LOGICA board replied about your talk.`,
-        "announcements",
-      );
-    } catch (error) {
-      console.error("Failed to notify speaker about new message", error);
-    }
-  }
+  // Board writes: the guest gets it by email. Guest writes: every exec does.
+  if (who.board) await noticeGuestMessage({ userId: submission.user?.id, email: submission.email }, body.trim());
+  else await noticeExecsOfReply(id, submission.name, body.trim());
 
   return NextResponse.json(message, { status: 201 });
 }
