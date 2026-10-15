@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { DELETE, PATCH } from "./route";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn() }));
+vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn(), tell: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     speakerSubmission: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -109,5 +109,14 @@ describe("DELETE /api/speakers/:id", () => {
     vi.mocked(prisma.speakerSubmission.findUnique).mockResolvedValue(null);
     expect((await del()).status).toBe(404);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/speakers/:id eventId", () => {
+  it("links a second guest to an event another guest already has", async () => {
+    vi.mocked(prisma.speakerSubmission.findUnique).mockResolvedValue({ id: "s2", eventId: null, email: "jona@example.com", status: "PENDING" } as never);
+    vi.mocked(prisma.speakerSubmission.update).mockResolvedValue({ id: "s2", user: null, event: { id: "shared", title: "Rise Reforming", startsAt: null, location: null } } as never);
+    expect((await patch({ eventId: "shared" })).status).toBe(200);
+    expect(prisma.speakerSubmission.update).toHaveBeenCalledWith(expect.objectContaining({ data: { event: { connect: { id: "shared" } } } }));
   });
 });

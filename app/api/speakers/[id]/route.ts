@@ -82,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (status === undefined && eventId === undefined && newEvent === undefined) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
-  let create: Prisma.EventCreateWithoutSpeakerInput | undefined;
+  let create: Prisma.EventCreateWithoutSpeakersInput | undefined;
   if (newEvent !== undefined) {
     if (eventId !== undefined) {
       return NextResponse.json({ error: "Send `eventId` or `newEvent`, not both." }, { status: 400 });
@@ -94,7 +94,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     try {
       const { title, startsAt, location, description, link } = parseEventUpdate(input);
-      create = { title, startsAt, location, description, link } as Prisma.EventCreateWithoutSpeakerInput;
+      create = { title, startsAt, location, description, link } as Prisma.EventCreateWithoutSpeakersInput;
     } catch (error) {
       if (error instanceof EventInputError) return NextResponse.json({ error: error.message }, { status: 400 });
       throw error;
