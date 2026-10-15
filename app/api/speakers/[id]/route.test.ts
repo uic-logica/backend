@@ -2,12 +2,16 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { PATCH } from "./route";
+import { DELETE, PATCH } from "./route";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { speakerSubmission: { findUnique: vi.fn(), update: vi.fn() } },
+  prisma: {
+    speakerSubmission: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    user: { deleteMany: vi.fn() },
+    $transaction: vi.fn(),
+  },
 }));
 
 const as = (role: string, accountKind = "MEMBER") =>
@@ -76,5 +80,27 @@ describe("PATCH /api/speakers/:id newEvent", () => {
     expect(prisma.speakerSubmission.update).toHaveBeenLastCalledWith(
       expect.objectContaining({ data: { event: { disconnect: true } } }),
     );
+  });
+});
+
+describe("DELETE /api/speakers/:id", () => {
+  const del = () => DELETE(new NextRequest("http://localhost/api/speakers/s1", { method: "DELETE" }), { params: Promise.resolve({ id: "s1" }) });
+
+  it("removes the guest and only their speaker sign-in", async () => {
+    expect((await del()).status).toBe(204);
+    expect(prisma.user.deleteMany).toHaveBeenCalledWith({ where: { speakerSubmissionId: "s1", accountKind: "SPEAKER" } });
+    expect(prisma.speakerSubmission.delete).toHaveBeenCalledWith({ where: { id: "s1" } });
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it("is exec only and 404s for an unknown guest", async () => {
+    for (const [role, kind] of [["BOARD", "MEMBER"], ["MEMBER", "MEMBER"], ["EXEC_BOARD", "SPEAKER"]]) {
+      as(role, kind);
+      expect((await del()).status).toBe(403);
+    }
+    as("EXEC_BOARD");
+    vi.mocked(prisma.speakerSubmission.findUnique).mockResolvedValue(null);
+    expect((await del()).status).toBe(404);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
