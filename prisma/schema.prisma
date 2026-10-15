@@ -591,3 +591,25 @@ model BlogPost {
 
   @@index([status, publishedAt])
 }
+
+enum EmailStatus {
+  SENT // handed to the provider (Resend / SMTP)
+  FAILED // the provider refused it; `error` says why
+  SKIPPED // not sent on purpose (the person turned that email off); `error` says why
+}
+
+// One row per email the site tried to send, for the exec board's email log
+// (dashboard Emails). `delivery` is the provider's latest word on a SENT
+// email (delivered, bounced, complained...), refreshed when the log is read.
+model EmailLog {
+  id         String      @id @default(cuid())
+  to         String
+  subject    String
+  status     EmailStatus
+  error      String?
+  providerId String? // Resend's email id, to look up delivery
+  delivery   String?
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
+}
