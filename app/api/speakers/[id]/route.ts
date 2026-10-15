@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { runsWorkspace } from "@/lib/authz";
 import { EventInputError, parseEventUpdate } from "@/lib/event-update";
-import { notifyUser } from "@/lib/notify";
+import { noticeGuestDecision, noticeGuestScheduled } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
 
 const STATUSES = ["PENDING", "CONFIRMED", "DECLINED"] as const;
@@ -123,17 +123,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     include: { user: { select: { id: true } }, event: true }, // id only — never leak passwordHash etc. through this response
   });
 
-  if (updated.user && (status === "CONFIRMED" || status === "DECLINED")) {
-    const message =
-      status === "CONFIRMED"
-        ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
-        : "Your speaker submission to LOGICA @ UIC was declined.";
-    try {
-      await notifyUser(updated.user.id, message, "announcements");
-    } catch (error) {
-      console.error("Failed to notify speaker about submission update", error);
-    }
-  }
+  // Tell the guest (their account, or the email they gave us).
+  const guest = { userId: updated.user?.id, email: existing.email };
+  if (status !== undefined) await noticeGuestDecision(guest, existing.status, String(status));
+  if (updated.event && updated.event.id !== existing.eventId) await noticeGuestScheduled(guest, updated.event);
 
   return NextResponse.json(updated);
 }

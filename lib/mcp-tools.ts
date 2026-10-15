@@ -1,6 +1,7 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { eventLink, parseEventUpdate, parseStartsAt } from "@/lib/event-update";
+import { noticeApplicant, noticeGuestDecision, noticeGuestMessage, noticeGuestScheduled, noticeRsvp } from "@/lib/notices";
 import { notifyUser } from "@/lib/notify";
 import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
@@ -348,11 +349,13 @@ export const TOOLS: Tool[] = [
       if (!(await prisma.event.findUnique({ where: { id: eventId } }))) {
         fail("No event with that id.");
       }
+      const before = await prisma.rsvp.findUnique({ where: { eventId_userId: { eventId, userId: caller.id } }, select: { status: true } });
       await prisma.rsvp.upsert({
         where: { eventId_userId: { eventId, userId: caller.id } },
         create: { eventId, userId: caller.id, status },
         update: { status },
       });
+      if (status === "GOING") await noticeRsvp(caller.id, eventId, before?.status);
       return { eventId, status };
     },
   },
@@ -507,19 +510,13 @@ export const TOOLS: Tool[] = [
       if (body.length > 2000) fail("Messages are limited to 2000 characters.");
       const submission = await prisma.speakerSubmission.findUnique({
         where: { id: submissionId },
-        select: { id: true, user: { select: { id: true } } },
+        select: { id: true, email: true, user: { select: { id: true } } },
       });
       if (!submission) fail("No submission with that id.");
       await prisma.speakerMessage.create({
         data: { submissionId, authorId: caller.id, body },
       });
-      if (submission.user) {
-        try {
-          await notifyUser(submission.user.id, "The LOGICA board replied about your talk.", "announcements");
-        } catch (error) {
-          console.error("Failed to notify speaker about new message", error);
-        }
-      }
+      await noticeGuestMessage({ userId: submission.user?.id, email: submission.email }, body);
       return { sent: true };
     },
   },
@@ -546,26 +543,14 @@ export const TOOLS: Tool[] = [
       }
       const existing = await prisma.speakerSubmission.findUnique({
         where: { id: submissionId },
-        select: { id: true, user: { select: { id: true } } },
+        select: { id: true, email: true, status: true, user: { select: { id: true } } },
       });
       if (!existing) fail("No submission with that id.");
       const updated = await prisma.speakerSubmission.update({
         where: { id: submissionId },
         data: { status: decision as "CONFIRMED" | "DECLINED" | "PENDING" },
       });
-      if (existing.user && (decision === "CONFIRMED" || decision === "DECLINED")) {
-        try {
-          await notifyUser(
-            existing.user.id,
-            decision === "CONFIRMED"
-              ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
-              : "Your speaker submission to LOGICA @ UIC was declined.",
-            "announcements",
-          );
-        } catch (error) {
-          console.error("Failed to notify speaker about submission update", error);
-        }
-      }
+      await noticeGuestDecision({ userId: existing.user?.id, email: existing.email }, existing.status, decision);
       return { submissionId, status: updated.status };
     },
   },
@@ -590,10 +575,15 @@ export const TOOLS: Tool[] = [
       if (eventId && !(await prisma.event.findUnique({ where: { id: eventId } }))) {
         fail("No event with that id.");
       }
+      const before = await prisma.speakerSubmission.findUnique({ where: { id: submissionId }, select: { eventId: true } });
       const updated = await prisma.speakerSubmission.update({
         where: { id: submissionId },
         data: { eventId },
+        include: { event: true, user: { select: { id: true } } },
       });
+      if (updated.event && updated.event.id !== before?.eventId) {
+        await noticeGuestScheduled({ userId: updated.user?.id, email: updated.email }, updated.event);
+      }
       return { submissionId, eventId: updated.eventId };
     },
   },
@@ -1446,7 +1436,10 @@ export const TOOLS: Tool[] = [
       if (!["PENDING", "INTERVIEW", "ACCEPTED", "DECLINED"].includes(decision)) {
         fail("`decision` must be PENDING, INTERVIEW, ACCEPTED or DECLINED.");
       }
-      const existing = await prisma.membershipApplication.findUnique({ where: { id }, select: { id: true } });
+      const existing = await prisma.membershipApplication.findUnique({
+        where: { id },
+        select: { id: true, userId: true, email: true, track: true, status: true },
+      });
       if (!existing) fail("No application with that id.");
       const updated = await prisma.membershipApplication.update({
         where: { id },
@@ -1457,6 +1450,7 @@ export const TOOLS: Tool[] = [
         },
         select: { id: true, name: true, email: true, status: true },
       });
+      await noticeApplicant(existing, decision);
       return updated;
     },
   },

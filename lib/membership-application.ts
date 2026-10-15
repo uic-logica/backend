@@ -1,3 +1,4 @@
+import { frontendOrigin } from "@/lib/linkedin-oauth";
 import type { ApplicationStatus, ApplicationTrack, TeamProject } from "@prisma/client";
 import { isAllowedEmail } from "./otp";
 
@@ -146,4 +147,21 @@ export function reapplyBlock(past: PastApplication[], now = new Date()): string 
   const from = new Date((latest.decidedAt ?? latest.createdAt).getTime() + REAPPLY_COOLDOWN_DAYS * 864e5);
   if (from > now) return `You can reapply for this role from ${from.toISOString().slice(0, 10)}.`;
   return null;
+}
+
+/** What the applicant reads for each decision. PENDING sends nothing. */
+export function applicantMessage(status: string, role: string, note: string, canReapply: boolean): string | null {
+  const dashboard = `${frontendOrigin()}/dashboard`;
+  switch (status) {
+    case "INTERVIEW":
+      return `LOGICA would like to talk with you about your ${role} application. Someone from the board will reach out to set up a time.`;
+    case "NEEDS_INFO":
+      return `LOGICA needs a bit more on your ${role} application:\n\n${note}\n\nUpdate it here: ${dashboard}`;
+    case "ACCEPTED":
+      return `You're in: your ${role} application to LOGICA was accepted. Next steps are in your dashboard: ${dashboard}`;
+    case "DECLINED":
+      return `Thank you for applying to LOGICA. We can't offer you a ${role} spot this time.${canReapply ? " You're welcome to apply again next semester." : ""}`;
+    default:
+      return null;
+  }
 }
