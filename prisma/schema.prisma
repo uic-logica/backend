@@ -70,6 +70,7 @@ model User {
   accounts          Account[]
   sessions          Session[]
   posts             Post[]
+  blogPosts         BlogPost[]
   rsvps             Rsvp[]
   attendances       Attendance[]     @relation("Attended")
   checkIns          Attendance[]     @relation("CheckedInBy")
@@ -536,4 +537,31 @@ model BoardItem {
 enum BoardItemKind {
   MONEY
   OUTREACH
+}
+
+// Member-written posts for the public /blog. The author writes and submits
+// in the dashboard; an exec publishes or sends it back with reviewNote.
+enum BlogStatus {
+  DRAFT
+  SUBMITTED
+  PUBLISHED
+  REJECTED
+}
+
+model BlogPost {
+  id          String     @id @default(cuid())
+  authorId    String
+  title       String
+  body        String // plain text, blank line = new paragraph
+  status      BlogStatus @default(DRAFT)
+  slug        String?    @unique // set when first published
+  reviewNote  String?
+  submittedAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([status, publishedAt])
 }
