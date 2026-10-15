@@ -8,7 +8,7 @@ vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn(), tell: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    speakerSubmission: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    speakerSubmission: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn(), findMany: vi.fn(async () => []), updateMany: vi.fn() },
     user: { deleteMany: vi.fn() },
     $transaction: vi.fn(),
   },

@@ -1,7 +1,8 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { eventLink, parseEventUpdate, parseStartsAt } from "@/lib/event-update";
-import { noticeApplicant, noticeGuestDecision, noticeGuestMessage, noticeGuestScheduled, noticeRsvp } from "@/lib/notices";
+import { threadLead, threadMembers } from "@/lib/speaker-thread";
+import { noticeApplicant, noticeExecsOfReply, noticeGuestDecision, noticeGuestMessage, noticeGuestScheduled, noticeRsvp } from "@/lib/notices";
 import { notifyUser } from "@/lib/notify";
 import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
@@ -268,8 +269,9 @@ export const TOOLS: Tool[] = [
     stages: ["CANDIDATE", "SPEAKER"],
     inputSchema: none,
     run: async (_input, caller) => {
+      const lead = caller.submissionId ? await threadLead(caller.submissionId) : null;
       const messages = await prisma.speakerMessage.findMany({
-        where: { submissionId: caller.submissionId ?? "" },
+        where: { submissionId: lead ?? "" },
         orderBy: { createdAt: "asc" },
         take: 100,
         include: { author: { select: { name: true, accountKind: true } } },
@@ -299,9 +301,14 @@ export const TOOLS: Tool[] = [
       if (!body) fail("`body` is required.");
       if (body.length > 2000) fail("Messages are limited to 2000 characters.");
       const s = await submissionOf(caller);
+      const lead = (await threadLead(s.id)) ?? s.id;
       const created = await prisma.speakerMessage.create({
-        data: { submissionId: s.id, authorId: caller.id, body },
+        data: { submissionId: lead, authorId: caller.id, body },
       });
+      const members = await threadMembers(lead);
+      const me = members.find((m) => m.id === s.id);
+      await noticeExecsOfReply(s.id, me?.name ?? null, body);
+      for (const m of members.filter((m) => m.id !== s.id)) await noticeGuestMessage({ userId: m.user?.id, email: m.email }, body, me?.name);
       return { sent: true, at: created.createdAt };
     },
   },
@@ -508,15 +515,13 @@ export const TOOLS: Tool[] = [
       const body = String(input.body ?? "").trim();
       if (!body) fail("`body` is required.");
       if (body.length > 2000) fail("Messages are limited to 2000 characters.");
-      const submission = await prisma.speakerSubmission.findUnique({
-        where: { id: submissionId },
-        select: { id: true, email: true, user: { select: { id: true } } },
-      });
-      if (!submission) fail("No submission with that id.");
+      const lead = await threadLead(submissionId);
+      if (!lead) fail("No submission with that id.");
+      // Linked guests share one thread: the message lands there and reaches each of them.
       await prisma.speakerMessage.create({
-        data: { submissionId, authorId: caller.id, body },
+        data: { submissionId: lead, authorId: caller.id, body },
       });
-      await noticeGuestMessage({ userId: submission.user?.id, email: submission.email }, body);
+      for (const m of await threadMembers(lead)) await noticeGuestMessage({ userId: m.user?.id, email: m.email }, body);
       return { sent: true };
     },
   },

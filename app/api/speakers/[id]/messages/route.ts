@@ -3,16 +3,19 @@ import { auth } from "@/auth";
 import { runsWorkspace } from "@/lib/authz";
 import { noticeExecsOfReply, noticeGuestMessage } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
+import { threadLead, threadMembers } from "@/lib/speaker-thread";
 
 const MAX_BODY = 2000;
 
 /**
- * The speaker's thread with the board, one per submission.
+ * The speaker's thread with the board, one per submission, or one per group
+ * when guests are linked (co-founders, a panel): any member's id reads and
+ * writes the same thread, stored on the lead (lib/speaker-thread.ts).
  *
- * Two kinds of reader: any board member (they share one side of every
- * thread) and the one speaker the submission belongs to. Anyone else —
- * including a plain MEMBER and a speaker asking for someone else's id —
- * gets a 403 here, not just a hidden button in the UI.
+ * Two kinds of reader: exec board members (they share one side of every
+ * thread) and the speakers on that thread. Anyone else, including a plain
+ * MEMBER and a speaker asking for someone else's id, gets a 403 here, not
+ * just a hidden button in the UI.
  */
 async function participant(submissionId: string) {
   const session = await auth();
@@ -29,7 +32,11 @@ async function participant(submissionId: string) {
     where: { id: session.user.id },
     select: { speakerSubmissionId: true },
   });
-  if (speaker?.speakerSubmissionId !== submissionId) {
+  const [mine, target] = await Promise.all([
+    speaker?.speakerSubmissionId ? threadLead(speaker.speakerSubmissionId) : null,
+    threadLead(submissionId),
+  ]);
+  if (!mine || mine !== target) {
     return { error: "This thread isn't yours.", status: 403 } as const;
   }
   return { user: session.user, board: false } as const;
@@ -42,8 +49,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const who = await participant(id);
   if ("error" in who) return NextResponse.json({ error: who.error }, { status: who.status });
 
+  const lead = (await threadLead(id)) ?? id;
   const messages = await prisma.speakerMessage.findMany({
-    where: { submissionId: id },
+    where: { submissionId: lead },
     orderBy: { createdAt: "asc" },
     take: 200,
     include: { author: AUTHOR },
@@ -71,20 +79,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: `Messages are limited to ${MAX_BODY} characters.` }, { status: 400 });
   }
 
-  const submission = await prisma.speakerSubmission.findUnique({
-    where: { id },
-    select: { id: true, name: true, email: true, user: { select: { id: true } } },
-  });
-  if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const lead = await threadLead(id);
+  if (!lead) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const message = await prisma.speakerMessage.create({
-    data: { submissionId: id, authorId: who.user.id, body: body.trim() },
+    data: { submissionId: lead, authorId: who.user.id, body: body.trim() },
     include: { author: AUTHOR },
   });
 
-  // Board writes: the guest gets it by email. Guest writes: every exec does.
-  if (who.board) await noticeGuestMessage({ userId: submission.user?.id, email: submission.email }, body.trim());
-  else await noticeExecsOfReply(id, submission.name, body.trim());
+  // Board writes: every guest on the thread gets it by email. A guest writes:
+  // the other guests on the thread and every exec do.
+  const members = await threadMembers(lead);
+  if (who.board) {
+    await Promise.all(members.map((m) => noticeGuestMessage({ userId: m.user?.id, email: m.email }, body.trim())));
+  } else {
+    const author = members.find((m) => m.user?.id === who.user.id);
+    await noticeExecsOfReply(id, author?.name ?? null, body.trim());
+    await Promise.all(
+      members.filter((m) => m !== author).map((m) => noticeGuestMessage({ userId: m.user?.id, email: m.email }, body.trim(), author?.name)),
+    );
+  }
 
   return NextResponse.json(message, { status: 201 });
 }
