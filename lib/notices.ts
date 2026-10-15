@@ -60,12 +60,13 @@ export async function noticeGuestScheduled(guest: Person, event: { title: string
   });
 }
 
-/** The board wrote in a guest's thread. */
-export async function noticeGuestMessage(guest: Person, text: string) {
-  await tell(guest, `The LOGICA board wrote about your talk: ${text}`, "New message from LOGICA", {
+/** The board (or a co-speaker on a shared thread) wrote in a guest's thread. */
+export async function noticeGuestMessage(guest: Person, text: string, from?: string | null) {
+  const who = from ?? "The LOGICA board";
+  await tell(guest, `${who} wrote about your talk: ${text}`, from ? `${from} wrote in your thread` : "New message from LOGICA", {
     preheader: text.slice(0, 120),
-    eyebrow: "Message from the board",
-    heading: "The LOGICA board wrote to you",
+    eyebrow: from ? "Your speaker thread" : "Message from the board",
+    heading: from ? `${from} wrote in your thread` : "The LOGICA board wrote to you",
     paragraphs: [],
     quote: text,
     button: { label: "Reply in your portal", url: portal() },

@@ -424,9 +424,18 @@ model SpeakerSubmission {
   // times that have since moved.
   availabilityConfirmedAt DateTime?
 
-  event    Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  // Linked guests (co-founders, a panel) share one thread and one event:
+  // each one points at the lead entry, whose own threadId stays null. Every
+  // message lives on the lead. See lib/speaker-thread.ts.
+  threadId String?
+
+  event    Event?              @relation(fields: [eventId], references: [id], onDelete: SetNull)
   user     User? // set once EXEC_BOARD invites this speaker to the portal — see AUTH.md
   messages SpeakerMessage[]
+  thread   SpeakerSubmission?  @relation("SharedThread", fields: [threadId], references: [id], onDelete: SetNull)
+  sharing  SpeakerSubmission[] @relation("SharedThread")
+
+  @@index([threadId])
 }
 
 /**
