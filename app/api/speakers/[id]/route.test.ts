@@ -60,8 +60,15 @@ describe("PATCH /api/speakers/:id newEvent", () => {
     expect(prisma.speakerSubmission.update).not.toHaveBeenCalled();
   });
 
-  it("rejects a missing title or time, a bad link, or eventId alongside it", async () => {
-    expect((await patch({ newEvent: { title: "x" } })).status).toBe(400);
+  it("creates it with the date TBD when no time is sent", async () => {
+    expect((await patch({ newEvent: { title: "Agents in prod" } })).status).toBe(200);
+    expect(prisma.speakerSubmission.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { event: { create: expect.objectContaining({ title: "Agents in prod", startsAt: undefined }) } } }),
+    );
+  });
+
+  it("rejects a missing title, a bad link, or eventId alongside it", async () => {
+    expect((await patch({ newEvent: { startsAt: talk.startsAt } })).status).toBe(400);
     expect((await patch({ newEvent: { ...talk, link: "javascript:alert(1)" } })).status).toBe(400);
     expect((await patch({ newEvent: talk, eventId: "e2" })).status).toBe(400);
     expect(prisma.speakerSubmission.update).not.toHaveBeenCalled();

@@ -88,8 +88,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "Send `eventId` or `newEvent`, not both." }, { status: 400 });
     }
     const input = (newEvent ?? {}) as Record<string, unknown>;
-    if (input.title === undefined || input.startsAt === undefined) {
-      return NextResponse.json({ error: "`newEvent` needs a `title` and `startsAt`." }, { status: 400 });
+    // No startsAt = date TBD; the exec can set it later from Events.
+    if (input.title === undefined) {
+      return NextResponse.json({ error: "`newEvent` needs a `title`." }, { status: 400 });
     }
     try {
       const { title, startsAt, location, description, link } = parseEventUpdate(input);

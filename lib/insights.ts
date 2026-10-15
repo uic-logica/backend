@@ -41,7 +41,7 @@ export async function clubInsights() {
       select: { userId: true },
     }),
     prisma.event.findMany({
-      orderBy: { startsAt: "desc" },
+      orderBy: { startsAt: { sort: "desc", nulls: "last" } },
       take: 20,
       select: { id: true, title: true, startsAt: true, location: true },
     }),
