@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { isBoardAccount } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 
 // logica-lean: bare-minimum Event CRUD for #7 (BE 5). No editing — real
@@ -14,7 +15,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (session.user.role !== "BOARD" && session.user.role !== "EXEC_BOARD") {
+  if (!isBoardAccount(session.user)) {
     return NextResponse.json({ error: "Only board members can create events." }, { status: 403 });
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { partnerAuth } from "@/auth";
 import { isBoardAccount } from "@/lib/authz";
 import { EventInputError, parseEventUpdate } from "@/lib/event-update";
 import { prisma } from "@/lib/prisma";
@@ -17,14 +17,18 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 /**
- * Board+ only: change an event's title, time, location, description or link.
+ * Board+, or a partner club granted this event (EventAccess): change an event's title, time, location, description or link.
  * Only the fields sent change; an empty string clears location, description
  * or link. Same rules as the MCP `update_event` tool (lib/event-update.ts).
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const session = await auth();
+  const session = await partnerAuth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (!isBoardAccount(session.user)) {
+  const { id } = await params;
+  const partner =
+    session.user.accountKind === "PARTNER" &&
+    !!(await prisma.eventAccess.findUnique({ where: { userId_eventId: { userId: session.user.id, eventId: id } } }));
+  if (!isBoardAccount(session.user) && !partner) {
     return NextResponse.json({ error: "Only board members can edit events." }, { status: 403 });
   }
 
@@ -47,7 +51,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     throw error;
   }
 
-  const { id } = await params;
   const exists = await prisma.event.findUnique({ where: { id }, select: { id: true } });
   if (!exists) return NextResponse.json({ error: "Event not found." }, { status: 404 });
   const event = await prisma.event.update({ where: { id }, data });
