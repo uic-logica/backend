@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { isBoardAccount } from "@/lib/authz";
+import { isBoardAccount, runsWorkspace } from "@/lib/authz";
 import { STATUSES, isStatus } from "@/lib/membership-application";
 import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
@@ -64,4 +64,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
   }
   return NextResponse.json(updated);
+}
+
+/** Exec only: remove an application for good (test entries, duplicates). The applicant's account, if any, stays. */
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can delete applications." }, { status: 403 });
+  }
+  const { id } = await params;
+  const { count } = await prisma.membershipApplication.deleteMany({ where: { id } });
+  if (!count) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  return new NextResponse(null, { status: 204 });
 }

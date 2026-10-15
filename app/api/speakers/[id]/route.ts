@@ -137,3 +137,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   return NextResponse.json(updated);
 }
+
+/**
+ * Exec only: remove a guest for good (test entries, duplicates). Their
+ * thread goes with them, and so does the speaker sign-in they made, if
+ * any. A linked event stays on the calendar.
+ */
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can delete guests." }, { status: 403 });
+  }
+  const { id } = await params;
+  const submission = await prisma.speakerSubmission.findUnique({ where: { id }, select: { id: true } });
+  if (!submission) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  await prisma.$transaction([
+    prisma.user.deleteMany({ where: { speakerSubmissionId: id, accountKind: "SPEAKER" } }),
+    prisma.speakerSubmission.delete({ where: { id } }),
+  ]);
+  return new NextResponse(null, { status: 204 });
+}
