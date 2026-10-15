@@ -156,18 +156,23 @@ export function applicantNotice(
   role: string,
   note: string,
   canReapply: boolean,
+  interviewLink?: string,
 ): { message: string; content: EmailContent } | null {
   const dashboard = `${frontendOrigin()}/dashboard`;
   switch (status) {
     case "INTERVIEW":
       return {
-        message: `LOGICA would like to talk with you about your ${role} application. Someone from the board will reach out to set up a time.`,
+        message: `LOGICA would like to talk with you about your ${role} application. Share when you can meet and the board will set up a time.`,
         content: {
           preheader: "The board would like to talk with you.",
           eyebrow: "Application update",
           heading: "Let's talk",
-          paragraphs: [`The board read your ${role} application and would like to talk with you. Someone will reach out soon to set up a time.`],
-          button: { label: "Open your dashboard", url: dashboard },
+          paragraphs: [
+            `The board read your ${role} application and would like to talk with you.`,
+            "Pick the times that work for you and the board will set up your interview.",
+          ],
+          button: interviewLink ? { label: "Share your availability", url: interviewLink } : { label: "Open your dashboard", url: dashboard },
+          footnote: interviewLink ? "This link is just for you. You can come back to it to change your times." : undefined,
         },
       };
     case "NEEDS_INFO":

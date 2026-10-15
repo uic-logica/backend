@@ -3,6 +3,7 @@ import { frontendOrigin } from "@/lib/linkedin-oauth";
 import { applicantNotice } from "@/lib/membership-application";
 import { logEmail } from "@/lib/email-log";
 import { emailTo, tell } from "@/lib/notify";
+import { openInterview } from "@/lib/interview";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -15,14 +16,16 @@ type Person = { userId?: string | null; email?: string | null };
 
 /** An application moved: interview, more info, accepted, declined. A repeat of the same status sends nothing. */
 export async function noticeApplicant(
-  app: { userId: string | null; email: string; track: string; status: string },
+  app: { id: string; userId: string | null; email: string; track: string; status: string },
   status: string,
   note = "",
   canReapply = true,
 ) {
   if (status === app.status && status !== "NEEDS_INFO") return;
   const role = app.track === "BOARD_MEMBER" ? "board member" : "Software Teams";
-  const notice = applicantNotice(status, role, note, canReapply);
+  // Moving to INTERVIEW sends a private link to share when they can meet.
+  const interviewLink = status === "INTERVIEW" ? await openInterview(app.id) : undefined;
+  const notice = applicantNotice(status, role, note, canReapply, interviewLink);
   if (!notice) return;
   const userId = app.userId ?? (await prisma.user.findUnique({ where: { email: app.email }, select: { id: true } }))?.id;
   await tell({ userId, email: app.email }, notice.message, `Your LOGICA ${role} application`, notice.content);

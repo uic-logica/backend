@@ -355,6 +355,13 @@ model MembershipApplication {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @default(now()) @updatedAt
 
+  // Interview scheduling. Moving to INTERVIEW mints a private link (only its
+  // sha256 is stored) that the applicant opens to share when they can meet,
+  // with or without an account. Works while the status stays INTERVIEW.
+  interviewTokenHash      String?   @unique
+  interviewAvailability   Json? // [{startDate, endDate, startTime, endTime}], same shape as a speaker's
+  interviewAvailabilityAt DateTime?
+
   @@index([email])
   @@index([userId])
 }

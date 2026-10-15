@@ -26,7 +26,7 @@ export type ParseResult =
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 
-function parseAvailability(value: unknown): { ok: true; windows: AvailabilityWindow[] } | { ok: false; error: string } {
+export function parseAvailability(value: unknown): { ok: true; windows: AvailabilityWindow[] } | { ok: false; error: string } {
   if (!Array.isArray(value)) return { ok: false, error: "`availability` must be a list." };
 
   const windows: AvailabilityWindow[] = [];
