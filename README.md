@@ -1,6 +1,6 @@
 # LOGICA @ UIC backend
 
-> **Owner:** [@nicolasrufino](https://github.com/nicolasrufino) · **Last reviewed:** Sep 29, 2026 · **Audience:** Members and recruiters · **Type:** Landing page
+> **Owner:** [@nicolasrufino](https://github.com/nicolasrufino) · **Last reviewed:** Oct 15, 2026 · **Audience:** Members and recruiters · **Type:** Landing page
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs)](https://nextjs.org/) [![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma)](https://www.prisma.io/) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql)](https://supabase.com/) [![Vercel](https://img.shields.io/badge/Vercel-logica__backend-000000?logo=vercel)](https://logica-backend.vercel.app)
 
@@ -40,7 +40,7 @@ For local signup, `ALLOWED_EMAIL_DOMAIN` must be a real domain such as `uic.edu`
 | Area | Routes | Who can call |
 | --- | --- | --- |
 | Account access | `/api/auth/signup`, `/api/auth/member-login`, speaker login and invites | Public entry points; protected mutations require the relevant session |
-| Events and participation | `/api/events`, `/api/attendance`, `/api/posts`, `/api/forms` | Public reads where supported; signed-in members for participation; BOARD/EXEC_BOARD for administration |
+| Events and participation | `/api/events`, `/api/attendance`, `/api/posts`, `/api/forms` | Public reads where supported; signed-in members for participation; BOARD/EXEC_BOARD create and edit events (`PATCH /api/events/:id`, same rules as the MCP `update_event` tool) and run check-in |
 | Software Teams applications | `/api/join`, `/api/join/mine` | `SOFTWARE_ENGINEER` submission requires a signed-in `@uic.edu` member; BOARD/EXEC_BOARD reviews |
 | Member workspace | `/api/dashboard`, profiles, notifications, MCP tokens | Signed-in account; responses are scoped to the caller |
 | Exec workspace | `/api/board/*`, speaker review and scheduling | MEMBER account with EXEC_BOARD role; BOARD keeps the member workspace view |
