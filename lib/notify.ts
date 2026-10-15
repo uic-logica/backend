@@ -21,7 +21,10 @@ export async function notifyUser(userId: string, message: string, category: Cate
     prisma.emailPreference.findUnique({ where: { userId } }),
   ]);
   if (!user) return;
-  if (pref && pref[category] === false) return;
+  if (pref && pref[category] === false) {
+    console.info(`email skipped: "${subject}", ${category} turned off`);
+    return;
+  }
   await emailTo(user.email, subject, message);
 }
 
@@ -30,6 +33,8 @@ const escapeHtml = (text: string) =>
 
 /** One plain email; a failed send logs and moves on (see notifyUser). */
 export async function emailTo(to: string, subject: string, message: string): Promise<void> {
+  // Domain only in logs: enough to see "sent to uic.edu" without storing addresses.
+  const domain = to.split("@")[1] ?? "?";
   try {
     await sendMail({
       to,
@@ -40,8 +45,9 @@ export async function emailTo(to: string, subject: string, message: string): Pro
         .map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, "<br>")}</p>`)
         .join("")}</div>`,
     });
+    console.info(`email sent: "${subject}" to @${domain}`);
   } catch (err) {
-    console.error(`email to ${to} failed`, err);
+    console.error(`email failed: "${subject}" to @${domain}`, err);
   }
 }
 

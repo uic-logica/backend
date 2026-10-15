@@ -70,13 +70,14 @@ export async function noticeExecsOfReply(submissionId: string, guestName: string
  * email setting; changing an existing GOING sends nothing.
  */
 export async function noticeRsvp(userId: string, eventId: string, previous: string | undefined) {
-  if (previous === "GOING") return;
+  if (previous === "GOING") return console.info("email skipped: RSVP confirmation, already going");
   const [user, pref, event] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
     prisma.emailPreference.findUnique({ where: { userId } }),
     prisma.event.findUnique({ where: { id: eventId }, select: { title: true, startsAt: true, location: true, link: true } }),
   ]);
-  if (!user || !event || pref?.eventReminders === false) return;
+  if (!user || !event) return;
+  if (pref?.eventReminders === false) return console.info("email skipped: RSVP confirmation, event emails turned off");
   const reminder = event.startsAt ? " We'll remind you the day before." : " We'll email you when the date is set.";
   await emailTo(
     user.email,
