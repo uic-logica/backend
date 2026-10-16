@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { isBoardAccount } from "@/lib/authz";
+import { EventInputError, parseStartsAt } from "@/lib/event-update";
 import { parseHttpLink } from "@/lib/link";
 import { prisma } from "@/lib/prisma";
 
@@ -15,7 +17,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (session.user.role !== "BOARD" && session.user.role !== "EXEC_BOARD") {
+  if (!isBoardAccount(session.user)) {
     return NextResponse.json({ error: "Only board members can create events." }, { status: 403 });
   }
 
@@ -30,8 +32,13 @@ export async function POST(request: NextRequest) {
   if (typeof title !== "string" || title.trim().length === 0) {
     return NextResponse.json({ error: "`title` is required." }, { status: 400 });
   }
-  if (typeof startsAt !== "string" || Number.isNaN(Date.parse(startsAt))) {
-    return NextResponse.json({ error: "`startsAt` must be an ISO date string." }, { status: 400 });
+  // Missing, null or "TBD" means the date isn't set yet.
+  let start: Date | null;
+  try {
+    start = startsAt === undefined ? null : parseStartsAt(startsAt);
+  } catch (error) {
+    if (error instanceof EventInputError) return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
   }
   const eventLink = typeof link === "string" ? link.trim() : link == null ? "" : null;
   if (eventLink === null || (eventLink && !parseHttpLink(eventLink).ok)) {
@@ -44,7 +51,7 @@ export async function POST(request: NextRequest) {
       description: typeof description === "string" ? description : null,
       location: typeof location === "string" ? location : null,
       link: eventLink || null,
-      startsAt: new Date(startsAt),
+      startsAt: start,
     },
   });
   return NextResponse.json(event, { status: 201 });

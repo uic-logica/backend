@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +25,7 @@ const SELF_FIELDS = {
       status: true,
       submittedAt: true,
       availabilityConfirmedAt: true,
+      availabilityRequest: true,
       talkTitle: true,
       slidesUrl: true,
       event: { select: { id: true, title: true, startsAt: true, location: true } },
@@ -95,7 +97,7 @@ export async function PATCH(request: NextRequest) {
 
   const current = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { speakerSubmissionId: true, speakerSubmission: { select: { status: true } } },
+    select: { speakerSubmissionId: true, speakerSubmission: { select: { status: true, availability: true } } },
   });
   if (!current?.speakerSubmissionId) {
     return NextResponse.json({ error: "No linked submission on file." }, { status: 409 });
@@ -139,7 +141,14 @@ export async function PATCH(request: NextRequest) {
   const [, user] = await prisma.$transaction([
     prisma.speakerSubmission.update({
       where: { id: current.speakerSubmissionId },
-      data: { organization, availability, needs, note, talkTitle, slidesUrl, availabilityConfirmedAt },
+      data: {
+        organization, availability, needs, note, talkTitle, slidesUrl, availabilityConfirmedAt,
+        // New times (or confirming them) answer the board's request for them.
+        ...(availabilityConfirmed === true ||
+        (availability !== undefined && JSON.stringify(availability) !== JSON.stringify(current.speakerSubmission?.availability ?? null))
+          ? { availabilityRequest: Prisma.DbNull }
+          : {}),
+      },
     }),
     prisma.user.update({
       where: { id: session.user.id },

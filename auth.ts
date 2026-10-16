@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 // Password login creates database sessions directly. Passwordless is archived,
 // not registered: old provider callbacks cannot issue new sessions.
-export const { handlers, auth, signIn, signOut } = NextAuth({
+const nextAuth = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [],
   session: { strategy: "database" },
@@ -42,3 +42,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+
+export const { handlers, signIn, signOut } = nextAuth;
+
+/**
+ * The session for every route. A PARTNER account (a partner club's board)
+ * reads as signed out here, so it reaches nothing by default: no feed, no
+ * profile, no RSVPs, no MCP. The few routes a partner may use opt in with
+ * `partnerAuth` and then check EventAccess themselves.
+ */
+export async function auth() {
+  const session = await nextAuth.auth();
+  return session?.user.accountKind === "PARTNER" ? null : session;
+}
+
+/** Any session, partners included. Only for routes that check EventAccess. */
+export const partnerAuth = () => nextAuth.auth();

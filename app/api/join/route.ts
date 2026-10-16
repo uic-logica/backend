@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ error: "Only board members can see applications." }, { status: 403 });
   }
 
-  const applications = await prisma.membershipApplication.findMany({ orderBy: { createdAt: "desc" } });
+  const applications = await prisma.membershipApplication.findMany({ orderBy: { createdAt: "desc" }, omit: { interviewTokenHash: true } });
   // Flag the applicants with a PDF on their profile; the board downloads it from /api/resume/:userId.
   const userIds = applications.flatMap((a) => (a.userId ? [a.userId] : []));
   const withResume = new Set(
