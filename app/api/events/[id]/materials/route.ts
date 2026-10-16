@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (materialVisibility === "PUBLIC") {
     try {
-      await notifyEventGoing(id, `New material posted for ${event.title}: ${material.filename}`, "eventReminders");
+      await notifyEventGoing(id, `New material posted for ${event.title}: ${material.filename}`, "events");
     } catch (error) {
       console.error("Failed to notify event attendees about new material", error);
     }

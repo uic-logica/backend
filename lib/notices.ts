@@ -5,6 +5,7 @@ import { logEmail } from "@/lib/email-log";
 import { emailTo, tell } from "@/lib/notify";
 import { openInterview } from "@/lib/interview";
 import { prisma } from "@/lib/prisma";
+import { modeFor } from "@/lib/email-prefs";
 
 /**
  * The emails people get when the board acts on something of theirs. The
@@ -30,7 +31,7 @@ export async function noticeApplicant(
   const notice = applicantNotice(status, role, note, canReapply, interviewLink);
   if (!notice) return false;
   const userId = app.userId ?? (await prisma.user.findUnique({ where: { email: app.email }, select: { id: true } }))?.id;
-  await tell({ userId, email: app.email }, notice.message, `Your LOGICA ${role} application`, notice.content);
+  await tell({ userId, email: app.email }, notice.message, `Your LOGICA ${role} application`, notice.content, "decisions");
   return true;
 }
 
@@ -46,12 +47,12 @@ export async function noticeGuestDecision(guest: Person, previous: string, statu
       heading: "You're speaking at LOGICA",
       paragraphs: ["Thank you for saying yes. Your talk details, the schedule and your thread with the board are in your speaker portal."],
       button: { label: "Open your portal", url: portal() },
-    });
+    }, "decisions");
   } else {
     await tell(guest, "Thank you for your interest in speaking at LOGICA @ UIC. We can't fit your talk in this time.", "Your LOGICA speaker submission", {
       heading: "Thank you for your interest",
       paragraphs: ["We can't fit your talk in this time. Thank you for offering to share it with LOGICA."],
-    });
+    }, "decisions");
   }
 }
 
@@ -64,7 +65,7 @@ export async function noticeGuestScheduled(guest: Person, event: { title: string
     paragraphs: ["Your talk is on the LOGICA calendar."],
     details: eventDetails(event),
     button: { label: "Open your portal", url: portal() },
-  });
+  }, "decisions");
 }
 
 /** The board (or a co-speaker on a shared thread) wrote in a guest's thread. */
@@ -77,7 +78,7 @@ export async function noticeGuestMessage(guest: Person, text: string, from?: str
     paragraphs: [],
     quote: text,
     button: { label: "Reply in your portal", url: portal() },
-  });
+  }, "messages");
 }
 
 /** A guest wrote in their thread: every exec hears about it. */
@@ -92,7 +93,7 @@ export async function noticeExecsOfReply(submissionId: string, guestName: string
     quote: text,
     button: { label: "Open the thread", url: `${frontendOrigin()}/dashboard/speakers?id=${submissionId}` },
   };
-  await Promise.all(execs.map((e) => tell({ userId: e.id }, `${name} wrote in their speaker thread: ${text}`, `${name} replied in their thread`, content)));
+  await Promise.all(execs.map((e) => tell({ userId: e.id }, `${name} wrote in their speaker thread: ${text}`, `${name} replied in their thread`, content, "guestReplies")));
 }
 
 /**
@@ -103,12 +104,13 @@ export async function noticeExecsOfReply(submissionId: string, guestName: string
 export async function noticeRsvp(userId: string, eventId: string, previous: string | undefined) {
   if (previous === "GOING") return console.info("email skipped: RSVP confirmation, already going");
   const [user, pref, event] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { email: true, role: true, accountKind: true } }),
     prisma.emailPreference.findUnique({ where: { userId } }),
     prisma.event.findUnique({ where: { id: eventId }, select: { title: true, startsAt: true, location: true, link: true } }),
   ]);
   if (!user || !event) return;
-  if (pref?.eventReminders === false) {
+  // Something they just did: off means off, otherwise it comes now, never in a summary.
+  if (modeFor(user, pref?.modes, "events") === "OFF") {
     console.info("email skipped: RSVP confirmation, event emails turned off");
     return logEmail({ to: user.email, subject: `You're going: ${event.title}`, status: "SKIPPED", error: "Event emails are off in their settings" });
   }

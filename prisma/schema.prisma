@@ -479,10 +479,11 @@ model SpeakerMessage {
  * actually asks for finer control; see AUTH.md.
  */
 model EmailPreference {
-  id             String  @id @default(cuid())
-  userId         String  @unique
-  eventReminders Boolean @default(true)
-  announcements  Boolean @default(true)
+  id     String @id @default(cuid())
+  userId String @unique
+  /// { [category]: "INSTANT" | "SUMMARY" | "OFF" }. A missing category uses the
+  /// default for their role (lib/email-prefs.ts). SUMMARY is exec board only.
+  modes  Json   @default("{}")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -492,6 +493,7 @@ model Notification {
   userId    String
   message   String
   link      String? // where clicking it goes, a site path like /dashboard/speakers?id=…
+  emailLater Boolean  @default(false) // waiting for the 9 AM daily summary email
   readAt    DateTime?
   createdAt DateTime  @default(now())
 

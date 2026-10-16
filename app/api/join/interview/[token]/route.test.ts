@@ -34,7 +34,7 @@ describe("interview availability link", () => {
       where: { id: "a1" },
       data: { interviewAvailability: [window], interviewAvailabilityAt: expect.any(Date) },
     });
-    expect(tell).toHaveBeenCalledWith({ userId: "exec1" }, expect.stringContaining("Ada"), expect.any(String), expect.objectContaining({ button: expect.objectContaining({ label: "Open the application" }) }));
+    expect(tell).toHaveBeenCalledWith({ userId: "exec1" }, expect.stringContaining("Ada"), expect.any(String), expect.objectContaining({ button: expect.objectContaining({ label: "Open the application" }) }), "boardUpdates");
   });
 
   it("refuses bad or empty times, and dead links", async () => {

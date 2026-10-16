@@ -57,7 +57,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       : action === "reject"
         ? `Your blog post "${post.title}" needs changes: ${reviewNote}`
         : `Your blog post "${post.title}" was taken off the site.${reviewNote ? ` ${reviewNote}` : ""}`,
-    "announcements",
+    "decisions",
     undefined,
     undefined,
     `/dashboard/blog?id=${post.id}`,

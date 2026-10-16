@@ -67,7 +67,7 @@ describe("board inbox", () => {
     expect((await writeThread(post({ body: "  See you Tuesday " }), params("m1"))).status).toBe(201);
     expect(prisma.boardMessage.create).toHaveBeenCalledWith(expect.objectContaining({ data: { memberId: "m1", authorId: "exec1", body: "See you Tuesday" } }));
     expect(prisma.threadRead.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { userId_thread: { userId: "exec1", thread: "member:m1" } } }));
-    expect(tell).toHaveBeenCalledWith({ userId: "m1" }, expect.stringContaining("See you Tuesday"), expect.any(String), expect.anything());
+    expect(tell).toHaveBeenCalledWith({ userId: "m1" }, expect.stringContaining("See you Tuesday"), expect.any(String), expect.anything(), "messages");
   });
 
   it("won't open a thread with a guest account or someone who doesn't exist", async () => {
