@@ -82,8 +82,6 @@ function money(cents: number | null | undefined): string | null {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/** An event's RSVP/page link: http(s) only, so a `javascript:` link can never reach the public page. Empty clears it. */
-
 const WINDOW = {
   type: "object",
   required: ["startDate", "endDate", "startTime", "endTime"],

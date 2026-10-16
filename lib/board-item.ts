@@ -1,4 +1,5 @@
 import type { BoardItemKind } from "@prisma/client";
+import { parseHttpLink } from "@/lib/link";
 
 /**
  * The two pipelines the board runs, and the only file that knows a spend
@@ -124,16 +125,15 @@ function when(value: unknown): Date | null | undefined {
 function link(value: unknown): string | null | undefined {
   const raw = text(value, 2000);
   if (raw === undefined || raw === null) return raw;
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new Error("That link isn't a valid URL.");
+  const parsed = parseHttpLink(raw);
+  if (!parsed.ok) {
+    throw new Error(
+      parsed.reason === "invalid"
+        ? "That link isn't a valid URL."
+        : "Links have to start with http:// or https://.",
+    );
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("Links have to start with http:// or https://.");
-  }
-  return parsed.toString();
+  return parsed.url;
 }
 
 function cents(value: unknown): number | null | undefined {
