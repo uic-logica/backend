@@ -58,10 +58,10 @@ export async function sendMail({
       if (failed.length) throw new Error(`Email could not be sent to ${failed.join(", ")}`);
       id = result.messageId ?? null;
     }
-    await logEmail({ to, subject, status: "SENT", providerId: process.env.RESEND_API_KEY ? id : null });
+    await logEmail({ to, subject, status: "SENT", providerId: process.env.RESEND_API_KEY ? id : null, text, html });
     return { id };
   } catch (err) {
-    await logEmail({ to, subject, status: "FAILED", error: (err as Error).message });
+    await logEmail({ to, subject, status: "FAILED", error: (err as Error).message, text, html });
     throw err;
   }
 }

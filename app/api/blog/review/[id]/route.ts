@@ -58,6 +58,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         ? `Your blog post "${post.title}" needs changes: ${reviewNote}`
         : `Your blog post "${post.title}" was taken off the site.${reviewNote ? ` ${reviewNote}` : ""}`,
     "announcements",
+    undefined,
+    undefined,
+    `/dashboard/blog?id=${post.id}`,
   );
   return NextResponse.json(updated);
 }

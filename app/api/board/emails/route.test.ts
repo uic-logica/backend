@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { GET } from "./route";
+import { GET as getOne } from "./[id]/route";
+import { NextRequest } from "next/server";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { emailLog: { findMany: vi.fn(), update: vi.fn() } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { emailLog: { findMany: vi.fn(), update: vi.fn(), findUnique: vi.fn() } } }));
 
 const as = (role: string, accountKind = "MEMBER") =>
   vi.mocked(auth).mockResolvedValue({ user: { id: "u1", role, accountKind }, expires: "" } as never);
@@ -35,5 +37,18 @@ describe("GET /api/board/emails", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails/re_1", expect.anything());
     expect(body[0]).toMatchObject({ to: "ana@uic.edu", status: "SENT", delivery: "delivered" });
     expect(prisma.emailLog.update).toHaveBeenCalledWith({ where: { id: "l1" }, data: { delivery: "delivered" } });
+  });
+});
+
+describe("GET /api/board/emails/:id", () => {
+  const one = () => getOne(new NextRequest("http://localhost/api/board/emails/l1"), { params: Promise.resolve({ id: "l1" }) });
+  it("returns the whole email to execs only, and leaves bodies out of the list", async () => {
+    as("EXEC_BOARD");
+    vi.mocked(prisma.emailLog.findUnique).mockResolvedValue({ ...sent, html: "<p>hi</p>", text: "hi" } as never);
+    expect(await (await one()).json()).toMatchObject({ html: "<p>hi</p>", text: "hi" });
+    await GET();
+    expect(prisma.emailLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ omit: { html: true, text: true } }));
+    as("BOARD");
+    expect((await one()).status).toBe(403);
   });
 });

@@ -484,6 +484,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    String
   message   String
+  link      String? // where clicking it goes, a site path like /dashboard/speakers?id=…
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
@@ -616,6 +617,8 @@ model EmailLog {
   error      String?
   providerId String? // Resend's email id, to look up delivery
   delivery   String?
+  text       String? // what was sent, so the board can read it back
+  html       String?
   createdAt  DateTime    @default(now())
 
   @@index([createdAt])

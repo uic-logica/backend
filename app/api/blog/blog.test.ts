@@ -118,7 +118,7 @@ describe("review", () => {
       expect.objectContaining({ data: expect.objectContaining({ status: "PUBLISHED", slug: "hack-night-recap-abc123" }) }),
     );
     const { notifyUser } = await import("@/lib/notify");
-    expect(notifyUser).toHaveBeenCalledWith("u1", expect.stringContaining("is live"), "announcements");
+    expect(notifyUser).toHaveBeenCalledWith("u1", expect.stringContaining("is live"), "announcements", undefined, undefined, "/dashboard/blog?id=clxpost0abc123");
   });
 
   it("needs a note to send back, and only acts on the right status", async () => {

@@ -38,6 +38,6 @@ export async function POST(request: NextRequest) {
       ...(submit && { status: "SUBMITTED", submittedAt: new Date() }),
     },
   });
-  if (submit) await submitBlogPost(post.title, session.user.name);
+  if (submit) await submitBlogPost(post.title, session.user.name, post.id);
   return NextResponse.json(post, { status: 201 });
 }

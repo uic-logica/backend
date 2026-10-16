@@ -81,3 +81,15 @@ describe("email layout", () => {
     expect(text).toContain("Go: https://logicauic.org");
   });
 });
+
+describe("notification links", () => {
+  it("turns an email button on our own site into an in-app path, and ignores outside links", async () => {
+    vi.stubEnv("FRONTEND_URL", "https://logicauic.org");
+    const { sitePath } = await vi.importActual<typeof import("./notify")>("./notify");
+    expect(sitePath("https://logicauic.org/dashboard/speakers?id=s1")).toBe("/dashboard/speakers?id=s1");
+    expect(sitePath("/dashboard/events?id=e1")).toBe("/dashboard/events?id=e1");
+    expect(sitePath("https://forms.gle/abc")).toBeUndefined();
+    expect(sitePath(undefined)).toBeUndefined();
+    vi.unstubAllEnvs();
+  });
+});

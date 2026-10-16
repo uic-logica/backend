@@ -22,8 +22,9 @@ export async function notifyUser(
   category: Category,
   subject = "LOGICA @ UIC",
   content?: EmailContent,
+  link?: string,
 ): Promise<void> {
-  await prisma.notification.create({ data: { userId, message } });
+  await prisma.notification.create({ data: { userId, message, link: link ?? sitePath(content?.button?.url) } });
 
   const [user, pref] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } }),
@@ -32,10 +33,27 @@ export async function notifyUser(
   if (!user) return;
   if (pref && pref[category] === false) {
     console.info(`email skipped: "${subject}", ${category} turned off`);
-    await logEmail({ to: user.email, subject, status: "SKIPPED", error: category === "eventReminders" ? "Event emails are off in their settings" : "Announcements are off in their settings" });
+    await logEmail({
+      to: user.email,
+      subject,
+      status: "SKIPPED",
+      error: category === "eventReminders" ? "Event emails are off in their settings" : "Announcements are off in their settings",
+      ...renderEmail(content ?? plain(message)), // what it would have said
+    });
     return;
   }
   await emailTo(user.email, subject, content ?? message);
+}
+
+/**
+ * The in-app link for a notification: the email's button when it points at
+ * our own site (as a path, so it works on any deploy), else nothing.
+ */
+export function sitePath(url?: string): string | undefined {
+  if (!url) return undefined;
+  const origin = frontendOrigin();
+  if (url.startsWith("/")) return url;
+  return url.startsWith(origin) ? url.slice(origin.length) || "/" : undefined;
 }
 
 /** A plain notification as an email: its paragraphs and a button to the dashboard. */
@@ -84,9 +102,11 @@ export async function notifyEventGoing(
   exceptUserId?: string,
   email?: { subject: string; content: EmailContent },
 ): Promise<void> {
+  // Everything here is about one event: the notification opens it.
+  const link = `/dashboard/events?id=${eventId}`;
   const rsvps = await prisma.rsvp.findMany({
     where: { eventId, status: "GOING", ...(exceptUserId && { userId: { not: exceptUserId } }) },
     select: { userId: true },
   });
-  await Promise.all(rsvps.map((r) => notifyUser(r.userId, message, category, email?.subject, email?.content)));
+  await Promise.all(rsvps.map((r) => notifyUser(r.userId, message, category, email?.subject, email?.content, link)));
 }
