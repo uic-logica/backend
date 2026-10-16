@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { logActivity } from "@/lib/agent-activity";
+import { clip } from "@/lib/agent-activity";
 import { prisma } from "@/lib/prisma";
 
 /** Any signed-in person: what their own agents did, newest first. */
@@ -26,6 +26,9 @@ export async function POST(request: NextRequest) {
   const { summary, via } = ((await request.json().catch(() => null)) ?? {}) as Record<string, unknown>;
   const text = typeof summary === "string" ? summary.trim() : "";
   if (!text || text.length > 300) return NextResponse.json({ error: "`summary` is one sentence, up to 300 characters." }, { status: 400 });
-  await logActivity(session.user.id, text, null, typeof via === "string" && via.trim() ? via.trim() : null);
+  // Written directly, not through logActivity: here the log line is the whole request, so a failure should say so.
+  await prisma.agentActivity.create({
+    data: { userId: session.user.id, summary: text, via: typeof via === "string" && via.trim() ? clip(via, 60) : null },
+  });
   return NextResponse.json({ logged: true }, { status: 201 });
 }
