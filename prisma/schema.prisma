@@ -484,6 +484,9 @@ model EmailPreference {
   /// { [category]: "INSTANT" | "SUMMARY" | "OFF" }. A missing category uses the
   /// default for their role (lib/email-prefs.ts). SUMMARY is exec board only.
   modes  Json   @default("{}")
+  // Unused since `modes`. Kept until the deploy reading `modes` is live (old code still selects them); drop then.
+  eventReminders Boolean @default(true)
+  announcements  Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
