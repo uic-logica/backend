@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callerFor } from "@/lib/mcp-token";
 import { TOOLS, toolsFor } from "@/lib/mcp-tools";
+import { logActivity } from "@/lib/agent-activity";
 import { STAGE_LABELS } from "@/lib/stage";
 
 /**
@@ -87,7 +88,13 @@ export async function POST(request: NextRequest) {
         return error(id, -32602, `Unknown tool: ${name}`);
       }
       try {
-        const value = await tool.run((params.arguments ?? {}) as Record<string, unknown>, caller);
+        const input = (params.arguments ?? {}) as Record<string, unknown>;
+        const value = await tool.run(input, caller);
+        // Changes land in the person's activity log; a log line that fails to build never fails the call.
+        if (tool.log) {
+          const line = await Promise.resolve(tool.log(input, value)).catch(() => null);
+          if (line) await logActivity(caller.id, line, tool.name);
+        }
         return result(id, {
           content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
         });

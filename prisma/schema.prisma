@@ -81,6 +81,7 @@ model User {
   uploadedMaterials EventMaterial[]
   speakerMessages   SpeakerMessage[]
   mcpTokens         McpToken[]
+  agentActivity     AgentActivity[]
 
   boardItems        BoardItem[]   @relation("BoardItemAuthor")
   ownedBoardItems   BoardItem[]   @relation("BoardItemOwner")
@@ -625,4 +626,19 @@ model EmailLog {
   createdAt  DateTime    @default(now())
 
   @@index([createdAt])
+}
+
+/// What someone's agent did for them, in a sentence they can read: MCP tool
+/// calls that change something, plus work an agent logs itself (a Claude Code
+/// session working through the dashboard or GitHub). Each person sees only their own.
+model AgentActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  summary   String // "moved Acme to Contacted"; shown as "Your agent moved Acme to Contacted"
+  tool      String? // the MCP tool, or null when the agent logged it itself
+  via       String? // where the agent ran when it logged itself, e.g. "Claude Code"
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

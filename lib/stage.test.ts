@@ -137,6 +137,12 @@ describe("MCP tools per stage", () => {
     }
   });
 
+  it("lets every agent log its own work", () => {
+    for (const stage of ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"] as const) {
+      expect(names(stage), stage).toContain("log_activity");
+    }
+  });
+
   it("reserves announce for exec board", () => {
     expect(names("EXEC_BOARD")).toContain("announce");
     expect(names("BOARD")).not.toContain("announce");
