@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { FIRST_STAGE, validStage } from "@/lib/board-item";
+import { parseHttpLink } from "@/lib/link";
 import { prisma } from "@/lib/prisma";
 import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
 
@@ -20,16 +21,15 @@ function optionalLink(value: unknown) {
   if (typeof value !== "string" || value.trim().length > MAX_LONG) {
     throw new Error(`\`link\` must be under ${MAX_LONG} characters.`);
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(value.trim());
-  } catch {
-    throw new Error("`link` must be a valid URL.");
+  const parsed = parseHttpLink(value);
+  if (!parsed.ok) {
+    throw new Error(
+      parsed.reason === "invalid"
+        ? "`link` must be a valid URL."
+        : "`link` must start with http:// or https://.",
+    );
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("`link` must start with http:// or https://.");
-  }
-  return parsed.toString();
+  return parsed.url;
 }
 
 /** Public, no sign-in: puts a prospective partner into the board's existing outreach pipeline. */
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const contactEmail = requiredText(body.contactEmail, "contactEmail", MAX_SHORT).toLowerCase();
     const detail = requiredText(body.message, "message", MAX_LONG);
     const link = optionalLink(body.link);
-    // Partners are external, so the UIC-only isAllowedEmail check must not be used here.
+    // Partners are external, so the UIC-only check in lib/allowed-email must not be used here.
     if (!EMAIL_RE.test(contactEmail)) throw new Error("`contactEmail` must be a valid email address.");
 
     const kind = "OUTREACH" as const;

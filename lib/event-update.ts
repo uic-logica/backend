@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { parseHttpLink } from "@/lib/link";
 
 /** A bad field in an event edit; the message is safe to show the board member. */
 export class EventInputError extends Error {}
@@ -10,12 +11,9 @@ export class EventInputError extends Error {}
 export function eventLink(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
-  const raw = String(value).trim();
-  try {
-    const url = new URL(raw);
-    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
-  } catch {}
-  throw new EventInputError("`link` must be an http or https URL.");
+  const parsed = parseHttpLink(String(value));
+  if (!parsed.ok) throw new EventInputError("`link` must be an http or https URL.");
+  return parsed.url;
 }
 
 /**
