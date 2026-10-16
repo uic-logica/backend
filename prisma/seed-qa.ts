@@ -151,6 +151,24 @@ async function main() {
     });
   }
 
+  // A partner club's board, granted one event: the only thing it can see or edit.
+  const partner = {
+    name: "QA Partner Club",
+    email: `qa-partner@${QA_DOMAIN}`,
+    username: "qa-partner",
+    accountKind: "PARTNER" as const,
+    role: "MEMBER" as const,
+    passwordHash,
+    mustChangePassword: false,
+    emailVerified: new Date(),
+  };
+  await prisma.user.upsert({ where: { id: "qa-partner" }, create: { id: "qa-partner", ...partner }, update: partner });
+  await prisma.eventAccess.upsert({
+    where: { userId_eventId: { userId: "qa-partner", eventId: "qa-event-soon" } },
+    create: { userId: "qa-partner", eventId: "qa-event-soon" },
+    update: {},
+  });
+
   // Feed
   const posts = [
     { id: "qa-post-1", authorId: "qa-exec-1", body: "QA filler post: welcome to the test environment. Nothing here is real." },

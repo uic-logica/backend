@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { noticeRsvp } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -19,10 +20,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { id: eventId } = await params;
+  const before = await prisma.rsvp.findUnique({ where: { eventId_userId: { eventId, userId: session.user.id } }, select: { status: true } });
   const rsvp = await prisma.rsvp.upsert({
     where: { eventId_userId: { eventId, userId: session.user.id } },
     create: { eventId, userId: session.user.id, status },
     update: { status },
   });
+  if (status === "GOING") await noticeRsvp(session.user.id, eventId, before?.status);
   return NextResponse.json(rsvp);
 }

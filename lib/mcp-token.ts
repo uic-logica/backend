@@ -56,6 +56,8 @@ export async function callerFor(header: string | null): Promise<Caller | null> {
     },
   });
   if (!row || row.revokedAt) return null;
+  // A partner club's account has no agent surface; stageOf would read it as MEMBER.
+  if (row.user.accountKind === "PARTNER") return null;
   if (!sameHash(row.tokenHash, hashToken(secret))) return null;
 
   // Best-effort: a failed touch must not fail the call it's recording.

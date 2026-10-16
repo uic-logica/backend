@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
-vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn() }));
+vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn(), tell: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
   membershipApplication: {
     findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
 } }));
 
 import { auth } from "@/auth";
-import { notifyUser } from "@/lib/notify";
+import { tell } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import * as list from "./route";
 import * as review from "./[id]/route";
@@ -241,7 +241,7 @@ describe("PATCH /api/join/:id review", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: "u9", email: "ada@uic.edu", track: "BOARD_MEMBER" } as never);
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: "u9", email: "ada@uic.edu", track: "BOARD_MEMBER", status: "PENDING" } as never);
     vi.mocked(prisma.membershipApplication.update).mockResolvedValue({ id: "app-1" } as never);
   });
 
@@ -257,7 +257,12 @@ describe("PATCH /api/join/:id review", () => {
       where: { id: "app-1" },
       data: expect.objectContaining({ status: "NEEDS_INFO", reviewNote: "Add a link to a project you built." }),
     });
-    expect(notifyUser).toHaveBeenCalledWith("u9", expect.stringContaining("Add a link to a project you built."), "announcements");
+    expect(tell).toHaveBeenCalledWith(
+      { userId: "u9", email: "ada@uic.edu" },
+      expect.stringContaining("Add a link to a project you built."),
+      "Your LOGICA board member application",
+      expect.objectContaining({ quote: "Add a link to a project you built." }),
+    );
   });
 
   it("records a final decline", async () => {
@@ -267,6 +272,20 @@ describe("PATCH /api/join/:id review", () => {
       where: { id: "app-1" },
       data: expect.objectContaining({ status: "DECLINED", canReapply: false, decidedAt: expect.any(Date) }),
     });
+    expect(tell).toHaveBeenCalledWith({ userId: "u9", email: "ada@uic.edu" }, expect.not.stringContaining("apply again"), expect.any(String), expect.any(Object));
+  });
+
+  it("emails an applicant with no account at the address they applied with, once per status", async () => {
+    board();
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: null, email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", status: "PENDING" } as never);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    await patch({ status: "INTERVIEW" });
+    expect(tell).toHaveBeenCalledWith({ userId: undefined, email: "ada@uic.edu" }, expect.stringContaining("talk with you"), "Your LOGICA Software Teams application", expect.objectContaining({ heading: "Let's talk" }));
+    vi.mocked(tell).mockClear();
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: null, email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", status: "INTERVIEW" } as never);
+    await patch({ status: "INTERVIEW" });
+    await patch({ status: "PENDING" });
+    expect(tell).not.toHaveBeenCalled();
   });
 });
 

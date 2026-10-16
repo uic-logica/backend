@@ -19,6 +19,7 @@ enum Role {
 enum AccountKind {
   MEMBER
   SPEAKER
+  PARTNER // a partner club's board: sees and edits only the events in EventAccess
 }
 
 // What someone does on the board. Purely cosmetic: it decides what gets
@@ -70,6 +71,7 @@ model User {
   accounts          Account[]
   sessions          Session[]
   posts             Post[]
+  blogPosts         BlogPost[]
   rsvps             Rsvp[]
   attendances       Attendance[]     @relation("Attended")
   checkIns          Attendance[]     @relation("CheckedInBy")
@@ -80,10 +82,11 @@ model User {
   speakerMessages   SpeakerMessage[]
   mcpTokens         McpToken[]
 
-  boardItems        BoardItem[] @relation("BoardItemAuthor")
-  ownedBoardItems   BoardItem[] @relation("BoardItemOwner")
-  frontedBoardItems BoardItem[] @relation("BoardItemPaidBy")
-  stagedBoardItems  BoardItem[] @relation("BoardItemStager")
+  boardItems        BoardItem[]   @relation("BoardItemAuthor")
+  ownedBoardItems   BoardItem[]   @relation("BoardItemOwner")
+  frontedBoardItems BoardItem[]   @relation("BoardItemPaidBy")
+  stagedBoardItems  BoardItem[]   @relation("BoardItemStager")
+  eventAccess       EventAccess[]
 }
 
 /**
@@ -189,7 +192,7 @@ model Event {
   location    String?
   // The one public URL for an event: a Luma page, a Discord invite, or a flyer.
   link        String?
-  startsAt    DateTime
+  startsAt    DateTime? // null = date TBD: listed as upcoming, no reminders or calendar file until it's set
   createdAt   DateTime  @default(now())
   remindedAt  DateTime? // set once the cron job (app/api/cron/event-reminders) has notified GOING rsvps
 
@@ -198,8 +201,23 @@ model Event {
   checkInCode CheckInCode?
   posts       Post[]
   materials   EventMaterial[]
-  speaker     SpeakerSubmission?
+  speakers    SpeakerSubmission[]
   boardItems  BoardItem[]
+  partners    EventAccess[]
+}
+
+// Which events a PARTNER account can see and edit. Granted and revoked by
+// exec; one account per club, reused across collabs.
+model EventAccess {
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+  @@index([eventId])
 }
 
 // Capture-only list for later export to LOGICA's existing mailing list; this is not a mail or campaign system.
@@ -337,6 +355,13 @@ model MembershipApplication {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @default(now()) @updatedAt
 
+  // Interview scheduling. Moving to INTERVIEW mints a private link (only its
+  // sha256 is stored) that the applicant opens to share when they can meet,
+  // with or without an account. Works while the status stays INTERVIEW.
+  interviewTokenHash      String?   @unique
+  interviewAvailability   Json? // [{startDate, endDate, startTime, endTime}], same shape as a speaker's
+  interviewAvailabilityAt DateTime?
+
   @@index([email])
   @@index([userId])
 }
@@ -397,7 +422,7 @@ model SpeakerSubmission {
   // there is one, which is what turns on the talk's attendance numbers.
   talkTitle String?
   slidesUrl String? // a link, not a file — so it opens on whatever machine is in the room
-  eventId   String? @unique
+  eventId   String? // several guests can share one event (a panel, co-founders)
 
   // Two confirmations, in order. The candidate confirms their availability
   // is final, which is the signal the board can act on; the board then
@@ -405,10 +430,22 @@ model SpeakerSubmission {
   // Cleared whenever the windows change, so "confirmed" never describes
   // times that have since moved.
   availabilityConfirmedAt DateTime?
+  // The board asked again for a specific range ({ from, to, note, at }), e.g.
+  // after a date fell through. Cleared when the speaker confirms new times.
+  availabilityRequest     Json?
 
-  event    Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  // Linked guests (co-founders, a panel) share one thread and one event:
+  // each one points at the lead entry, whose own threadId stays null. Every
+  // message lives on the lead. See lib/speaker-thread.ts.
+  threadId String?
+
+  event    Event?              @relation(fields: [eventId], references: [id], onDelete: SetNull)
   user     User? // set once EXEC_BOARD invites this speaker to the portal — see AUTH.md
   messages SpeakerMessage[]
+  thread   SpeakerSubmission?  @relation("SharedThread", fields: [threadId], references: [id], onDelete: SetNull)
+  sharing  SpeakerSubmission[] @relation("SharedThread")
+
+  @@index([threadId])
 }
 
 /**
@@ -450,6 +487,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    String
   message   String
+  link      String? // where clicking it goes, a site path like /dashboard/speakers?id=…
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
@@ -536,4 +574,55 @@ model BoardItem {
 enum BoardItemKind {
   MONEY
   OUTREACH
+}
+
+// Member-written posts for the public /blog. The author writes and submits
+// in the dashboard; an exec publishes or sends it back with reviewNote.
+enum BlogStatus {
+  DRAFT
+  SUBMITTED
+  PUBLISHED
+  REJECTED
+}
+
+model BlogPost {
+  id          String     @id @default(cuid())
+  authorId    String
+  title       String
+  body        String // plain text, blank line = new paragraph
+  status      BlogStatus @default(DRAFT)
+  slug        String?    @unique // set when first published
+  reviewNote  String?
+  submittedAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([status, publishedAt])
+}
+
+enum EmailStatus {
+  SENT // handed to the provider (Resend / SMTP)
+  FAILED // the provider refused it; `error` says why
+  SKIPPED // not sent on purpose (the person turned that email off); `error` says why
+}
+
+// One row per email the site tried to send, for the exec board's email log
+// (dashboard Emails). `delivery` is the provider's latest word on a SENT
+// email (delivered, bounced, complained...), refreshed when the log is read.
+model EmailLog {
+  id         String      @id @default(cuid())
+  to         String
+  subject    String
+  status     EmailStatus
+  error      String?
+  providerId String? // Resend's email id, to look up delivery
+  delivery   String?
+  text       String? // what was sent, so the board can read it back
+  html       String?
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
 }
