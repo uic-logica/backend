@@ -191,6 +191,18 @@ describe.skipIf(!process.env.CI || !process.env.DATABASE_URL)("MCP tools end to 
     used.add("find_documents");
   });
 
+  it("logs changes in plain words for the caller only, and lets an agent log its own work", async () => {
+    const mia = { user: { email: `${tag}-mia@uic.edu` } };
+    const lines = (await prisma.agentActivity.findMany({ where: mia, select: { summary: true, tool: true } })).map((a) => a.summary);
+    expect(lines).toContain(`RSVPed going to ${tag} talk`);
+    // Reads aren't logged.
+    expect(await prisma.agentActivity.count({ where: { ...mia, tool: "list_events" } })).toBe(0);
+    await call("MEMBER", "log_activity", { summary: "updated your resume draft in Docs", via: "Claude Code" });
+    expect(await prisma.agentActivity.findFirst({ where: { ...mia, tool: null } })).toMatchObject({ summary: "updated your resume draft in Docs", via: "Claude Code" });
+    // Someone else's agent never writes into this person's log.
+    expect(await prisma.agentActivity.count({ where: { ...mia, summary: { contains: "announcement" } } })).toBe(0);
+  });
+
   it("keeps the club's tools away from everyone else", async () => {
     await refused("MEMBER", "create_event", { title: "nope", startsAt: new Date().toISOString() });
     await refused("BOARD", "set_member_role", { id: ids.member, role: "EXEC_BOARD" });

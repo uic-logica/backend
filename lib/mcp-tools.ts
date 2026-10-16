@@ -18,6 +18,7 @@ import { clubInsights } from "@/lib/insights";
 import { mintInvite, isVisitKind, VISIT_NOUN } from "@/lib/invite";
 import { CHECK_IN_CODE_MINUTES, checkCode, generateCheckInCode, normalizeCheckInCode } from "@/lib/check-in";
 import { driveConfigured, FOLDER_MIME, listFolder, searchFiles } from "@/lib/drive";
+import { clip, logActivity } from "@/lib/agent-activity";
 
 type Json = Record<string, unknown>;
 
@@ -30,6 +31,12 @@ export type Tool = {
   stages: Stage[];
   inputSchema: Json;
   run: (input: Json, caller: Caller) => Promise<unknown>;
+  /**
+   * For tools that change something: what happened, as the end of "Your agent …",
+   * for the person's activity log. Read-only tools leave it out and aren't logged.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  log?: (input: Json, result: any) => string | Promise<string>;
 };
 
 /**
@@ -82,7 +89,14 @@ function money(cents: number | null | undefined): string | null {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/** An event's RSVP/page link: http(s) only, so a `javascript:` link can never reach the public page. Empty clears it. */
+/** A guest's name for a log line. */
+async function guestName(id: unknown) {
+  const g = await prisma.speakerSubmission.findUnique({ where: { id: String(id ?? "") }, select: { name: true, email: true } });
+  return g?.name ?? g?.email ?? "a guest";
+}
+const eventTitle = async (id: unknown) =>
+  (await prisma.event.findUnique({ where: { id: String(id ?? "") }, select: { title: true } }))?.title ?? "an event";
+const listed = (input: Json, keys: string[]) => keys.filter((k) => input[k] !== undefined).join(", ");
 
 const WINDOW = {
   type: "object",
@@ -164,6 +178,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `updated your availability (${r.saved.length} time window${r.saved.length === 1 ? "" : "s"}, not confirmed yet)`,
     run: async (input, caller) => {
       const parsed = parseSpeakerFields({ availability: input.windows });
       if (!parsed.ok) fail(parsed.error);
@@ -193,6 +208,7 @@ export const TOOLS: Tool[] = [
       "Tell the board your availability is final and they can work out a date. Requires at least one window on file.",
     stages: ["CANDIDATE", "SPEAKER"],
     inputSchema: none,
+    log: () => "confirmed your availability as final",
     run: async (_input, caller) => {
       const s = await submissionOf(caller);
       const windows = (s.availability as unknown[] | null) ?? [];
@@ -226,6 +242,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `updated your talk${r.talkTitle ? ` "${clip(r.talkTitle, 60)}"` : ""}${r.slidesUrl ? " and its slides link" : ""}`,
     run: async (input, caller) => {
       const parsed = parseSpeakerFields(input);
       if (!parsed.ok) fail(parsed.error);
@@ -296,6 +313,7 @@ export const TOOLS: Tool[] = [
       properties: { body: str("What to say. Plain text.") },
       additionalProperties: false,
     },
+    log: (i) => `messaged the board: "${clip(i.body)}"`,
     run: async (input, caller) => {
       const body = String(input.body ?? "").trim();
       if (!body) fail("`body` is required.");
@@ -350,6 +368,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: async (_i, r) => `RSVPed ${r.status === "GOING" ? "going" : "not going"} to ${await eventTitle(r.eventId)}`,
     run: async (input, caller) => {
       const eventId = String(input.eventId ?? "");
       const status = input.status === "NOT_GOING" ? "NOT_GOING" : "GOING";
@@ -381,6 +400,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (i) => `updated your profile (${listed(i, ["name", "bio", "major", "gradYear"])})`,
     run: async (input, caller) => {
       const bio = input.bio === undefined ? undefined : String(input.bio);
       if (bio !== undefined && bio.length > 500) fail("`bio` must be 500 characters or fewer.");
@@ -510,6 +530,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: async (i) => `replied to ${await guestName(i.submissionId)}: "${clip(i.body)}"`,
     run: async (input, caller) => {
       const submissionId = String(input.submissionId ?? "");
       const body = String(input.body ?? "").trim();
@@ -540,6 +561,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: async (i, r) => { const who = await guestName(r.submissionId); return r.status === "CONFIRMED" ? `confirmed ${who} as a speaker` : r.status === "DECLINED" ? `declined ${who}` : `moved ${who} back to candidate`; },
     run: async (input) => {
       const submissionId = String(input.submissionId ?? "");
       const decision = String(input.decision ?? "");
@@ -574,6 +596,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: async (_i, r) => r.eventId ? `linked ${await guestName(r.submissionId)} to ${await eventTitle(r.eventId)}` : `unlinked ${await guestName(r.submissionId)} from their event`,
     run: async (input) => {
       const submissionId = String(input.submissionId ?? "");
       const eventId = input.eventId == null ? null : String(input.eventId);
@@ -609,6 +632,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `created the event ${r.title}${r.startsAt ? "" : " (date TBD)"}`,
     run: async (input) => {
       let startsAt: Date | null = null;
       try {
@@ -648,6 +672,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (i, r) => `edited the event ${r.title} (${listed(i, ["title", "startsAt", "location", "description", "link"]) || "no changes"})`,
     run: async (input) => {
       const id = String(input.id ?? "");
       if (!(await prisma.event.findUnique({ where: { id }, select: { id: true } }))) fail("No event with that id.");
@@ -761,6 +786,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `added "${clip(r.title, 60)}" to ${r.kind === "MONEY" ? "Money" : "Outreach"}`,
     run: async (input, caller) => {
       const kind = boardKind(input.kind);
       const data = parseOrFail(input, kind, true);
@@ -803,6 +829,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (i, r) => i.archive === true ? `archived "${clip(r.title, 60)}"` : r.movedStage ? `moved "${clip(r.title, 60)}" to ${r.stageLabel}` : `updated "${clip(r.title, 60)}"`,
     run: async (input, caller) => {
       const id = String(input.id ?? "").trim();
       if (!id) fail("`id` is required.");
@@ -961,6 +988,31 @@ export const TOOLS: Tool[] = [
   },
 
 
+  // ---- Everyone: an agent's own record ---------------------------------
+  {
+    name: "log_activity",
+    summary: "Note what it did for you outside this connection",
+    description:
+      "Add a line to this person's agent activity log for work you did for them outside these tools (through the dashboard, GitHub, email…). Tools here that change something are logged on their own; don't repeat them. Write it as what follows \"Your agent\", past tense, plain words: \"sent Yurii an availability ask for Tue, Nov 10\".",
+    stages: ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"],
+    inputSchema: {
+      type: "object",
+      required: ["summary"],
+      properties: {
+        summary: str("What you did, finishing the sentence \"Your agent …\". One sentence."),
+        via: str("Where you ran, e.g. \"Claude Code\"."),
+      },
+      additionalProperties: false,
+    },
+    run: async (input, caller) => {
+      const summary = String(input.summary ?? "").trim();
+      if (!summary) fail("`summary` is required.");
+      if (summary.length > 300) fail("Keep it to one sentence (300 characters).");
+      await logActivity(caller.id, summary, null, input.via === undefined ? null : String(input.via));
+      return { logged: true };
+    },
+  },
+
   // ---- Everyone: what the platform is telling you ---------------------
   {
     name: "my_notifications",
@@ -998,6 +1050,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `marked ${r.markedRead} notification${r.markedRead === 1 ? "" : "s"} read`,
     run: async (input, caller) => {
       if (input.all === true) {
         // Scoped to the caller — a notification id alone must never be
@@ -1032,6 +1085,7 @@ export const TOOLS: Tool[] = [
       properties: { code: str("The check-in code shown at the event.") },
       additionalProperties: false,
     },
+    log: (_i, r) => r.alreadyCheckedIn ? `tried to check you in to ${r.event} (you already were)` : `checked you in to ${r.event}`,
     run: async (input, caller) => {
       const submitted = String(input.code ?? "").trim();
       if (!submitted) fail("`code` is required.");
@@ -1110,6 +1164,7 @@ export const TOOLS: Tool[] = [
       properties: { body: str("What to post.") },
       additionalProperties: false,
     },
+    log: (i) => `posted to the community feed: "${clip(i.body)}"`,
     run: async (input, caller) => {
       const body = String(input.body ?? "").trim();
       if (!body) fail("`body` is required.");
@@ -1134,6 +1189,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (i) => `updated ${listed(i, ["needs", "note"]).replace(", ", " and ").replace("needs", "what you need in the room").replace("note", "your note for the board")}`,
     run: async (input, caller) => {
       const s = await submissionOf(caller);
       if (input.needs === undefined && input.note === undefined) fail("Pass `needs`, `note`, or both.");
@@ -1167,6 +1223,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (i, r) => i.submissionId ? `made a new sign-up link for ${r.name ?? "a guest"}` : `invited ${r.name ?? "a new guest"} and made their sign-up link`,
     run: async (input) => {
       const { secret, ...invite } = mintInvite();
 
@@ -1267,6 +1324,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `set ${r.name ?? r.email} to ${STAGE_LABELS[r.role as Stage] ?? r.role}${r.officer ? ` (${String(r.officer).toLowerCase().replace("_", " ")})` : ""}`,
     run: async (input, caller) => {
       const id = String(input.id ?? "").trim();
       if (!id) fail("`id` is required.");
@@ -1320,6 +1378,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `set the ${r.label} budget to ${r.total}`,
     run: async (input) => {
       const label = String(input.label ?? "").trim();
       if (!label) fail("`label` is required.");
@@ -1345,6 +1404,7 @@ export const TOOLS: Tool[] = [
       properties: { eventId: str("The event's id, from list_events.") },
       additionalProperties: false,
     },
+    log: (_i, r) => `opened check-in for ${r.event}`,
     run: async (input) => {
       const eventId = String(input.eventId ?? "").trim();
       const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, title: true } });
@@ -1435,6 +1495,7 @@ export const TOOLS: Tool[] = [
       },
       additionalProperties: false,
     },
+    log: (_i, r) => `moved ${r.name ?? r.email}'s application to ${String(r.status).toLowerCase()}`,
     run: async (input) => {
       const id = String(input.id ?? "").trim();
       const decision = String(input.decision ?? "").toUpperCase();
@@ -1473,6 +1534,7 @@ export const TOOLS: Tool[] = [
       properties: { message: str("The announcement. One or two sentences.") },
       additionalProperties: false,
     },
+    log: (i, r) => `sent an announcement to ${r.sentTo} members: "${clip(i.message)}"`,
     run: async (input) => {
       const message = String(input.message ?? "").trim();
       if (!message) fail("`message` is required.");
