@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { eventDetails, when } from "@/lib/event-when";
+import { frontendOrigin } from "@/lib/linkedin-oauth";
 import { notifyEventGoing } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 
@@ -27,7 +29,19 @@ export async function GET(request: NextRequest) {
   });
 
   for (const event of events) {
-    await notifyEventGoing(event.id, `Reminder: ${event.title} is coming up soon.`, "eventReminders");
+    await notifyEventGoing(event.id, `Reminder: ${event.title} is coming up soon.`, "eventReminders", undefined, {
+      subject: `Tomorrow: ${event.title}`,
+      content: {
+        preheader: when(event),
+        eyebrow: "Reminder",
+        heading: `${event.title} is coming up`,
+        paragraphs: ["You said you're going. Here's when and where."],
+        details: eventDetails(event),
+        button: event.link
+          ? { label: "Event page", url: event.link }
+          : { label: "View event", url: `${frontendOrigin()}/events/${event.id}` },
+      },
+    });
     await prisma.event.update({ where: { id: event.id }, data: { remindedAt: now } });
   }
 

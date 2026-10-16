@@ -1,12 +1,13 @@
 import { createSign } from "node:crypto";
 
 /**
- * Read-only access to the club's Google Drive.
+ * Access to the club's Google Drive: browsing for Documents, and one write,
+ * saving receipt photos into Receipts/<YYYY-MM> (uploadReceipt).
  *
  * A service account, not per-user OAuth: every exec already shares one Drive,
  * so per-person consent buys nothing and costs a token-refresh story per
- * person. The account is granted Viewer on one folder and can see nothing
- * else in anyone's Drive.
+ * person. The account is a Content manager on the club's shared drive and
+ * can see nothing else in anyone's Drive.
  *
  * logica-lean: the service-account JWT is signed here with node:crypto
  * instead of pulling in googleapis (tens of megabytes) for two endpoints.
@@ -14,8 +15,11 @@ import { createSign } from "node:crypto";
  * or anything beyond a bearer token. Nothing else would change.
  */
 
-const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+// Full Drive scope because receipts are uploaded; the account only has the
+// club's shared drive, so that's still all it can touch.
+const SCOPE = "https://www.googleapis.com/auth/drive";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
 const FILES_URL = "https://www.googleapis.com/drive/v3/files";
 
 const FIELDS =
@@ -142,5 +146,61 @@ export async function searchFiles(term: string): Promise<DriveFile[]> {
 /** Tests and the dev switcher need to drop the memo. */
 export function clearDriveCache() {
   listings.clear();
+  folderIds.clear();
   cachedToken = null;
+}
+
+const folderIds = new Map<string, string>();
+
+/** The id of folder `name` under `parent`, created if it isn't there. */
+async function ensureFolder(parent: string, name: string): Promise<string> {
+  const key = `${parent}/${name}`;
+  const known = folderIds.get(key);
+  if (known) return known;
+  const token = await accessToken();
+  const url = new URL(FILES_URL);
+  url.searchParams.set("q", `'${escape(parent)}' in parents and name = '${escape(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false`);
+  url.searchParams.set("fields", "files(id)");
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("includeItemsFromAllDrives", "true");
+  const found = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!found.ok) throw new Error("Google Drive didn't answer. Try again in a moment.");
+  let id = ((await found.json()) as { files?: { id: string }[] }).files?.[0]?.id;
+  if (!id) {
+    const created = await fetch(`${FILES_URL}?supportsAllDrives=true&fields=id`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parent] }),
+    });
+    if (!created.ok) throw new Error("Couldn't create the receipts folder in Drive. Check the service account is a Content manager.");
+    id = ((await created.json()) as { id: string }).id;
+  }
+  folderIds.set(key, id);
+  return id;
+}
+
+/**
+ * Save one receipt photo to Receipts/<YYYY-MM> in the club's Drive and
+ * return its link. Folders are made on first use.
+ */
+export async function uploadReceipt(file: { name: string; mimeType: string; bytes: Buffer }): Promise<{ id: string; url: string }> {
+  const receipts = await ensureFolder(rootFolderId(), "Receipts");
+  const month = new Date().toISOString().slice(0, 7);
+  const folder = await ensureFolder(receipts, month);
+  const token = await accessToken();
+  const boundary = `logica${Date.now().toString(36)}`;
+  const meta = JSON.stringify({ name: file.name, parents: [folder] });
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${file.mimeType}\r\n\r\n`),
+    file.bytes,
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
+  const response = await fetch(`${UPLOAD_URL}?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if (!response.ok) throw new Error("Drive didn't take the receipt. Try again in a moment.");
+  const saved = (await response.json()) as { id: string; webViewLink?: string };
+  return { id: saved.id, url: saved.webViewLink ?? `https://drive.google.com/file/d/${saved.id}/view` };
 }
