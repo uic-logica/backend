@@ -267,7 +267,7 @@ async function main() {
     });
     await prisma.emailPreference.upsert({
       where: { userId: id },
-      create: { userId: id, eventReminders: true, announcements: true },
+      create: { userId: id },
       update: {},
     });
   }

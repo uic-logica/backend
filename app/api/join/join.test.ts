@@ -262,6 +262,7 @@ describe("PATCH /api/join/:id review", () => {
       expect.stringContaining("Add a link to a project you built."),
       "Your LOGICA board member application",
       expect.objectContaining({ quote: "Add a link to a project you built." }),
+      "decisions",
     );
   });
 
@@ -272,7 +273,7 @@ describe("PATCH /api/join/:id review", () => {
       where: { id: "app-1" },
       data: expect.objectContaining({ status: "DECLINED", canReapply: false, decidedAt: expect.any(Date) }),
     });
-    expect(tell).toHaveBeenCalledWith({ userId: "u9", email: "ada@uic.edu" }, expect.not.stringContaining("apply again"), expect.any(String), expect.any(Object));
+    expect(tell).toHaveBeenCalledWith({ userId: "u9", email: "ada@uic.edu" }, expect.not.stringContaining("apply again"), expect.any(String), expect.any(Object), "decisions");
   });
 
   it("emails an applicant with no account at the address they applied with, once per status", async () => {
@@ -280,7 +281,7 @@ describe("PATCH /api/join/:id review", () => {
     vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: null, email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", status: "PENDING" } as never);
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     await patch({ status: "INTERVIEW" });
-    expect(tell).toHaveBeenCalledWith({ userId: undefined, email: "ada@uic.edu" }, expect.stringContaining("talk with you"), "Your LOGICA Software Teams application", expect.objectContaining({ heading: "Let's talk" }));
+    expect(tell).toHaveBeenCalledWith({ userId: undefined, email: "ada@uic.edu" }, expect.stringContaining("talk with you"), "Your LOGICA Software Teams application", expect.objectContaining({ heading: "Let's talk" }), "decisions");
     vi.mocked(tell).mockClear();
     vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: null, email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", status: "INTERVIEW" } as never);
     await patch({ status: "INTERVIEW" });

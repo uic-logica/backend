@@ -53,12 +53,13 @@ describe("public reads", () => {
 describe("writing", () => {
   it("creates a draft, or a submitted post that pings the execs", async () => {
     expect((await mine.POST(req("POST", { title: "Hi", body: "Words" }))).status).toBe(201);
-    expect(prisma.notification.createMany).not.toHaveBeenCalled();
+    expect((await import("@/lib/notify")).notifyUser).not.toHaveBeenCalled();
     await mine.POST(req("POST", { title: "Hi", body: "Words", submit: true }));
     expect(prisma.blogPost.create).toHaveBeenLastCalledWith({
       data: expect.objectContaining({ status: "SUBMITTED", authorId: "u1" }),
     });
-    expect(prisma.notification.createMany).toHaveBeenCalledOnce();
+    const { notifyUser } = await import("@/lib/notify");
+    expect(notifyUser).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("for review"), "boardUpdates", expect.any(String), undefined, expect.stringContaining("/dashboard/blog?view=review"));
   });
 
   it("needs a title and a body, and a member account", async () => {
@@ -118,7 +119,7 @@ describe("review", () => {
       expect.objectContaining({ data: expect.objectContaining({ status: "PUBLISHED", slug: "hack-night-recap-abc123" }) }),
     );
     const { notifyUser } = await import("@/lib/notify");
-    expect(notifyUser).toHaveBeenCalledWith("u1", expect.stringContaining("is live"), "announcements", undefined, undefined, "/dashboard/blog?id=clxpost0abc123");
+    expect(notifyUser).toHaveBeenCalledWith("u1", expect.stringContaining("is live"), "decisions", undefined, undefined, "/dashboard/blog?id=clxpost0abc123");
   });
 
   it("needs a note to send back, and only acts on the right status", async () => {

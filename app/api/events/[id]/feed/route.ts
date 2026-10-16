@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const who = post.author.name?.trim() || "Someone";
   try {
-    await notifyEventGoing(id, `${who} posted on ${event.title}: ${post.body}`, "eventReminders", session.user.id);
+    await notifyEventGoing(id, `${who} posted on ${event.title}: ${post.body}`, "events", session.user.id);
   } catch (error) {
     console.error("Failed to notify event attendees about new post", error);
   }

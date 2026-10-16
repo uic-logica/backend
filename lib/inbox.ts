@@ -33,7 +33,7 @@ export async function noticeMemberMessage(memberId: string, text: string) {
     paragraphs: [],
     quote: text,
     button: { label: "Reply in your dashboard", url: `${frontendOrigin()}/dashboard/messages` },
-  });
+  }, "messages");
 }
 
 /** A member wrote to the board: every exec hears about it. */
@@ -48,5 +48,5 @@ export async function noticeExecsOfMemberMessage(member: { id: string; name: str
     quote: text,
     button: { label: "Open the thread", url: `${frontendOrigin()}/dashboard/messages?thread=${memberThread(member.id)}` },
   };
-  await Promise.all(execs.map((e) => tell({ userId: e.id }, `${name} wrote to the board: ${text}`, `${name} wrote to the board`, content)));
+  await Promise.all(execs.map((e) => tell({ userId: e.id }, `${name} wrote to the board: ${text}`, `${name} wrote to the board`, content, "memberMessages")));
 }

@@ -25,7 +25,7 @@ beforeEach(() => {
 describe("guest notices", () => {
   it("emails a decision once, and nothing for a move back to candidate", async () => {
     await noticeGuestDecision(guest, "PENDING", "CONFIRMED");
-    expect(tell).toHaveBeenCalledWith(guest, expect.stringContaining("confirmed"), "You're confirmed to speak at LOGICA", expect.objectContaining({ heading: "You're speaking at LOGICA" }));
+    expect(tell).toHaveBeenCalledWith(guest, expect.stringContaining("confirmed"), "You're confirmed to speak at LOGICA", expect.objectContaining({ heading: "You're speaking at LOGICA" }), "decisions");
     vi.mocked(tell).mockClear();
     await noticeGuestDecision(guest, "CONFIRMED", "CONFIRMED");
     await noticeGuestDecision(guest, "CONFIRMED", "PENDING");
@@ -39,18 +39,19 @@ describe("guest notices", () => {
       expect.stringContaining("Thursday, November 5 at 5:00 PM in SELE 2252"),
       expect.any(String),
       expect.objectContaining({ details: [["When", "Thursday, November 5 at 5:00 PM"], ["Where", "SELE 2252"]] }),
+      "decisions",
     );
     await noticeGuestScheduled(guest, { title: "Agents in prod", startsAt: null, location: null });
-    expect(tell).toHaveBeenLastCalledWith(guest, expect.stringContaining("date TBD"), expect.any(String), expect.objectContaining({ details: [["When", "Date TBD"]] }));
+    expect(tell).toHaveBeenLastCalledWith(guest, expect.stringContaining("date TBD"), expect.any(String), expect.objectContaining({ details: [["When", "Date TBD"]] }), "decisions");
   });
 
   it("carries the board's message to the guest, and a guest's reply to every exec", async () => {
     await noticeGuestMessage(guest, "Can you do 6 PM?");
-    expect(tell).toHaveBeenCalledWith(guest, expect.stringContaining("Can you do 6 PM?"), "New message from LOGICA", expect.objectContaining({ quote: "Can you do 6 PM?" }));
+    expect(tell).toHaveBeenCalledWith(guest, expect.stringContaining("Can you do 6 PM?"), "New message from LOGICA", expect.objectContaining({ quote: "Can you do 6 PM?" }), "messages");
     vi.mocked(prisma.user.findMany).mockResolvedValue([{ id: "e1" }, { id: "e2" }] as never);
     await noticeExecsOfReply("s1", "Mira", "Yes, 6 works");
     expect(prisma.user.findMany).toHaveBeenCalledWith({ where: { accountKind: "MEMBER", role: "EXEC_BOARD" }, select: { id: true } });
-    expect(tell).toHaveBeenCalledWith({ userId: "e2" }, expect.stringContaining("Yes, 6 works"), "Mira replied in their thread", expect.objectContaining({ quote: "Yes, 6 works" }));
+    expect(tell).toHaveBeenCalledWith({ userId: "e2" }, expect.stringContaining("Yes, 6 works"), "Mira replied in their thread", expect.objectContaining({ quote: "Yes, 6 works" }), "guestReplies");
   });
 });
 
@@ -66,7 +67,7 @@ describe("RSVP confirmation", () => {
 
   it("stays quiet when they were already going or turned event emails off", async () => {
     await noticeRsvp("u1", "ev1", "GOING");
-    vi.mocked(prisma.emailPreference.findUnique).mockResolvedValue({ eventReminders: false } as never);
+    vi.mocked(prisma.emailPreference.findUnique).mockResolvedValue({ modes: { events: "OFF" } } as never);
     await noticeRsvp("u1", "ev1", "NOT_GOING");
     expect(emailTo).not.toHaveBeenCalled();
   });

@@ -4,13 +4,13 @@ import { frontendOrigin } from "@/lib/linkedin-oauth";
 import { logEmail } from "@/lib/email-log";
 import { sendMail } from "@/lib/mailer";
 
-type Category = "eventReminders" | "announcements";
+import { type Category, modeFor } from "@/lib/email-prefs";
 
 /**
  * Every "tell a user something" path in the app goes through this: writes
- * the in-app Notification, then emails it too unless they've turned that
- * category off (EmailPreference — defaults to on, matches the GET default
- * in app/api/email-preferences/route.ts).
+ * the in-app Notification, then emails it the way they chose for this
+ * category (lib/email-prefs.ts): right away, held for the exec board's 9 AM
+ * summary (`emailLater`, sent by /api/cron/daily-summary), or not at all.
  *
  * ponytail: fire-and-forget, no retry/queue — a failed send logs and moves
  * on rather than losing the in-app notification too. Revisit with a real
@@ -24,20 +24,22 @@ export async function notifyUser(
   content?: EmailContent,
   link?: string,
 ): Promise<void> {
-  await prisma.notification.create({ data: { userId, message, link: link ?? sitePath(content?.button?.url) } });
-
   const [user, pref] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { email: true, role: true, accountKind: true } }),
     prisma.emailPreference.findUnique({ where: { userId } }),
   ]);
-  if (!user) return;
-  if (pref && pref[category] === false) {
+  const mode = user ? modeFor(user, pref?.modes, category) : "OFF";
+  await prisma.notification.create({
+    data: { userId, message, link: link ?? sitePath(content?.button?.url), emailLater: mode === "SUMMARY" },
+  });
+  if (!user || mode === "SUMMARY") return;
+  if (mode === "OFF") {
     console.info(`email skipped: "${subject}", ${category} turned off`);
     await logEmail({
       to: user.email,
       subject,
       status: "SKIPPED",
-      error: category === "eventReminders" ? "Event emails are off in their settings" : "Announcements are off in their settings",
+      error: "This kind of email is off in their settings",
       ...renderEmail(content ?? plain(message)), // what it would have said
     });
     return;
@@ -83,8 +85,8 @@ export async function tell(
   person: { userId?: string | null; email?: string | null },
   message: string,
   subject: string,
-  content?: EmailContent,
-  category: Category = "announcements",
+  content: EmailContent | undefined,
+  category: Category,
 ): Promise<void> {
   try {
     if (person.userId) await notifyUser(person.userId, message, category, subject, content);

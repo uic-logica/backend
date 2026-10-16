@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         heading: `${app.name} shared their interview times`,
         paragraphs: ["Their times are on their application. Pick one and reach out to set up the interview."],
         button: { label: "Open the application", url },
-      }),
+      }, "boardUpdates"),
     ),
   );
   return NextResponse.json({ availability: parsed.windows, savedAt });

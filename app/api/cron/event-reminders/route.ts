@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   });
 
   for (const event of events) {
-    await notifyEventGoing(event.id, `Reminder: ${event.title} is coming up soon.`, "eventReminders", undefined, {
+    await notifyEventGoing(event.id, `Reminder: ${event.title} is coming up soon.`, "events", undefined, {
       subject: `Tomorrow: ${event.title}`,
       content: {
         preheader: when(event),
