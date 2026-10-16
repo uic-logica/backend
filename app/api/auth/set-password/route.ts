@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { partnerAuth } from "@/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 
 const MIN_LENGTH = 8;
 
 /**
- * SPEAKER accounts only — sets a new password. Used both for the forced
+ * SPEAKER and PARTNER accounts — sets a new password. Used both for the forced
  * change on first login (`mustChangePassword`) and any later "change my
  * password" action; `currentPassword` is required either way so a
  * hijacked-mid-flow session can't lock the real owner out.
  */
 export async function POST(request: NextRequest) {
-  const session = await auth();
+  const session = await partnerAuth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  if (session.user.accountKind !== "SPEAKER") {
+  if (session.user.accountKind === "MEMBER") {
     return NextResponse.json({ error: "This account doesn't use a password." }, { status: 403 });
   }
 

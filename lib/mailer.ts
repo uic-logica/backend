@@ -1,23 +1,30 @@
 import { createTransport } from "nodemailer";
+import { logEmail } from "@/lib/email-log";
 
 // `|| 587` (not `??`) so an empty EMAIL_SERVER_PORT="" falls back too.
 const port = Number(process.env.EMAIL_SERVER_PORT) || 587;
 
-const smtp = {
-  host: process.env.EMAIL_SERVER_HOST,
-  port,
-  // 465 is implicit TLS; everything else (587, 25) starts plaintext and upgrades via STARTTLS.
-  secure: port === 465,
-  auth: {
-    user: process.env.EMAIL_SERVER_USER,
-    pass: process.env.EMAIL_SERVER_PASSWORD,
-  },
-};
+// SMTP for local dev (Ethereal) or any SMTP account. In production Resend's
+// key is set and sendMail uses its HTTP API instead; `host` here only marks
+// "something is configured".
+const smtp = process.env.RESEND_API_KEY
+  ? { host: "smtp.resend.com", port: 465, secure: true, auth: { user: "resend", pass: process.env.RESEND_API_KEY } }
+  : {
+      host: process.env.EMAIL_SERVER_HOST,
+      port,
+      // 465 is implicit TLS; everything else (587, 25) starts plaintext and upgrades via STARTTLS.
+      secure: port === 465,
+      auth: {
+        user: process.env.EMAIL_SERVER_USER,
+        pass: process.env.EMAIL_SERVER_PASSWORD,
+      },
+    };
 
 /**
- * Shared SMTP sender — same server config `auth.ts`'s Nodemailer provider
- * uses for sign-in codes, factored out so anything else that needs to email
- * someone (speaker invites, notifications) doesn't redefine the transport.
+ * The one sender: Resend's HTTP API when RESEND_API_KEY is set (it hands
+ * back an id, so the email log can look up delivery later), otherwise SMTP
+ * from the EMAIL_SERVER_* settings (local dev). Every attempt is written to
+ * the email log (lib/email-log.ts), sent or failed.
  */
 export async function sendMail({
   to,
@@ -29,19 +36,32 @@ export async function sendMail({
   subject: string;
   text: string;
   html: string;
-}): Promise<void> {
-  if (!process.env.EMAIL_SERVER_HOST || !process.env.EMAIL_FROM) {
-    throw new Error("EMAIL_SERVER_HOST and EMAIL_FROM must be set to send email");
+}): Promise<{ id: string | null }> {
+  try {
+    if (!smtp.host || !process.env.EMAIL_FROM) {
+      throw new Error("Set RESEND_API_KEY (or EMAIL_SERVER_HOST) and EMAIL_FROM to send email");
+    }
+    const replyTo = process.env.EMAIL_REPLY_TO || undefined;
+    let id: string | null = null;
+    if (process.env.RESEND_API_KEY) {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: process.env.EMAIL_FROM, to, subject, text, html, ...(replyTo && { reply_to: replyTo }) }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
+      if (!res.ok) throw new Error(body.message ?? `Resend refused the email (${res.status})`);
+      id = body.id ?? null;
+    } else {
+      const result = await createTransport(smtp).sendMail({ to, from: process.env.EMAIL_FROM, ...(replyTo && { replyTo }), subject, text, html });
+      const failed = [...(result.rejected ?? []), ...(result.pending ?? [])].filter(Boolean);
+      if (failed.length) throw new Error(`Email could not be sent to ${failed.join(", ")}`);
+      id = result.messageId ?? null;
+    }
+    await logEmail({ to, subject, status: "SENT", providerId: process.env.RESEND_API_KEY ? id : null, text, html });
+    return { id };
+  } catch (err) {
+    await logEmail({ to, subject, status: "FAILED", error: (err as Error).message, text, html });
+    throw err;
   }
-
-  const result = await createTransport(smtp).sendMail({
-    to,
-    from: process.env.EMAIL_FROM,
-    subject,
-    text,
-    html,
-  });
-
-  const failed = [...(result.rejected ?? []), ...(result.pending ?? [])].filter(Boolean);
-  if (failed.length) throw new Error(`Email could not be sent to ${failed.join(", ")}`);
 }

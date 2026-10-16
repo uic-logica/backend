@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { isBoardAccount } from "@/lib/authz";
+import { isBoardAccount, runsWorkspace } from "@/lib/authz";
 import { STATUSES, isStatus } from "@/lib/membership-application";
-import { notifyUser } from "@/lib/notify";
+import { noticeApplicant } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const existing = await prisma.membershipApplication.findUnique({
     where: { id },
-    select: { id: true, userId: true, email: true, track: true },
+    select: { id: true, userId: true, email: true, track: true, status: true },
   });
   if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -53,15 +53,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     },
   });
 
-  if (status === "NEEDS_INFO") {
-    try {
-      const userId = existing.userId
-        ?? (await prisma.user.findUnique({ where: { email: existing.email }, select: { id: true } }))?.id;
-      const role = existing.track === "BOARD_MEMBER" ? "board" : "build team";
-      if (userId) await notifyUser(userId, `LOGICA needs a bit more on your ${role} application: ${trimmed}`, "announcements");
-    } catch (err) {
-      console.error(`join review: notify failed for ${id}`, err);
-    }
-  }
+  await noticeApplicant(existing, status, trimmed, canReapply ?? true);
   return NextResponse.json(updated);
 }
+
+/** Exec only: remove an application for good (test entries, duplicates). The applicant's account, if any, stays. */
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  if (!runsWorkspace(session.user)) {
+    return NextResponse.json({ error: "Only the exec board can delete applications." }, { status: 403 });
+  }
+  const { id } = await params;
+  const { count } = await prisma.membershipApplication.deleteMany({ where: { id } });
+  if (!count) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  return new NextResponse(null, { status: 204 });
+}
+

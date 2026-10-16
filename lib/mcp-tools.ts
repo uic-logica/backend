@@ -1,9 +1,12 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { eventLink, parseEventUpdate, parseStartsAt } from "@/lib/event-update";
+import { threadLead, threadMembers } from "@/lib/speaker-thread";
+import { noticeApplicant, noticeExecsOfReply, noticeGuestDecision, noticeGuestMessage, noticeGuestScheduled, noticeRsvp } from "@/lib/notices";
 import { notifyUser } from "@/lib/notify";
 import { type AvailabilityWindow, commonAvailability, parseSpeakerFields } from "@/lib/speaker-submission";
 import { type Caller } from "@/lib/mcp-token";
-import { type Stage, STAGE_LABELS, runsTheClub } from "@/lib/stage";
+import { type Stage, STAGE_LABELS } from "@/lib/stage";
 import {
   budgetRollup,
   parseBoardItem,
@@ -21,6 +24,8 @@ type Json = Record<string, unknown>;
 export type Tool = {
   name: string;
   description: string;
+  /** What a person reads on the dashboard. `description` is written for the agent. */
+  summary: string;
   /** Which of the five see this tool at all. */
   stages: Stage[];
   inputSchema: Json;
@@ -78,16 +83,6 @@ function money(cents: number | null | undefined): string | null {
 }
 
 /** An event's RSVP/page link: http(s) only, so a `javascript:` link can never reach the public page. Empty clears it. */
-function eventLink(value: unknown): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null || value === "") return null;
-  const raw = String(value).trim();
-  try {
-    const url = new URL(raw);
-    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
-  } catch {}
-  fail("`link` must be an http or https URL.");
-}
 
 const WINDOW = {
   type: "object",
@@ -105,6 +100,7 @@ export const TOOLS: Tool[] = [
   // ---- Everyone -------------------------------------------------------
   {
     name: "whoami",
+    summary: "Tell you who you are here and what it can do",
     description:
       "Who you are on the LOGICA platform and what you can do here. Call this first if you are unsure which tools apply.",
     stages: ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"],
@@ -122,6 +118,7 @@ export const TOOLS: Tool[] = [
   // ---- Candidate: one job, agree a date -------------------------------
   {
     name: "get_my_visit",
+    summary: "Check your status and what LOGICA still needs from you",
     description:
       "Your current status with LOGICA: whether you are still a candidate or a confirmed speaker, the availability we have on file, and whether you have confirmed it.",
     stages: ["CANDIDATE", "SPEAKER"],
@@ -151,6 +148,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "set_availability",
+    summary: "Update the times you could come in",
     description:
       "Replace the windows when you could come in and speak. Give every window that works — more options means a better chance of finding a date. This does NOT confirm them; call confirm_availability when the list is final.",
     stages: ["CANDIDATE", "SPEAKER"],
@@ -190,6 +188,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "confirm_availability",
+    summary: "Confirm your availability is final",
     description:
       "Tell the board your availability is final and they can work out a date. Requires at least one window on file.",
     stages: ["CANDIDATE", "SPEAKER"],
@@ -215,6 +214,7 @@ export const TOOLS: Tool[] = [
   // ---- Speaker: a confirmed talk to prepare ---------------------------
   {
     name: "set_talk",
+    summary: "Set your talk title and slides link",
     description:
       "Set your talk title and/or the link to your slides. Only available once the board has confirmed you as a speaker. Slides must be a URL, not a file, so the deck opens on whatever laptop is in the room.",
     stages: ["SPEAKER"],
@@ -242,6 +242,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_talk_stats",
+    summary: "See RSVPs, check-ins and questions for your talk",
     description:
       "How your own talk is filling up: RSVPs, check-ins, and questions on its feed. Empty until the board attaches your talk to a scheduled event.",
     stages: ["SPEAKER"],
@@ -263,12 +264,14 @@ export const TOOLS: Tool[] = [
   // ---- Guests: the board thread ---------------------------------------
   {
     name: "read_board_thread",
+    summary: "Read your messages with the board",
     description: "Read your message thread with the LOGICA board.",
     stages: ["CANDIDATE", "SPEAKER"],
     inputSchema: none,
     run: async (_input, caller) => {
+      const lead = caller.submissionId ? await threadLead(caller.submissionId) : null;
       const messages = await prisma.speakerMessage.findMany({
-        where: { submissionId: caller.submissionId ?? "" },
+        where: { submissionId: lead ?? "" },
         orderBy: { createdAt: "asc" },
         take: 100,
         include: { author: { select: { name: true, accountKind: true } } },
@@ -283,6 +286,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "message_board",
+    summary: "Message the board",
     description:
       "Send a message to the LOGICA board in your thread. Reference an availability window or event inline with [[window:<key>|label]] or [[event:<id>|label]] if useful.",
     stages: ["CANDIDATE", "SPEAKER"],
@@ -297,9 +301,14 @@ export const TOOLS: Tool[] = [
       if (!body) fail("`body` is required.");
       if (body.length > 2000) fail("Messages are limited to 2000 characters.");
       const s = await submissionOf(caller);
+      const lead = (await threadLead(s.id)) ?? s.id;
       const created = await prisma.speakerMessage.create({
-        data: { submissionId: s.id, authorId: caller.id, body },
+        data: { submissionId: lead, authorId: caller.id, body },
       });
+      const members = await threadMembers(lead);
+      const me = members.find((m) => m.id === s.id);
+      await noticeExecsOfReply(s.id, me?.name ?? null, body);
+      for (const m of members.filter((m) => m.id !== s.id)) await noticeGuestMessage({ userId: m.user?.id, email: m.email }, body, me?.name);
       return { sent: true, at: created.createdAt };
     },
   },
@@ -307,13 +316,14 @@ export const TOOLS: Tool[] = [
   // ---- Member ---------------------------------------------------------
   {
     name: "list_events",
+    summary: "See upcoming events and your RSVPs",
     description: "Upcoming LOGICA events, with your RSVP status for each.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: none,
     run: async (_input, caller) => {
       const events = await prisma.event.findMany({
-        where: { startsAt: { gte: new Date() } },
-        orderBy: { startsAt: "asc" },
+        where: { OR: [{ startsAt: { gte: new Date() } }, { startsAt: null }] },
+        orderBy: { startsAt: { sort: "asc", nulls: "last" } },
         take: 25,
         include: { rsvps: { where: { userId: caller.id }, select: { status: true } } },
       });
@@ -328,6 +338,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "rsvp",
+    summary: "RSVP to events",
     description: "RSVP to a LOGICA event. Use list_events to find the event id.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: {
@@ -345,16 +356,19 @@ export const TOOLS: Tool[] = [
       if (!(await prisma.event.findUnique({ where: { id: eventId } }))) {
         fail("No event with that id.");
       }
+      const before = await prisma.rsvp.findUnique({ where: { eventId_userId: { eventId, userId: caller.id } }, select: { status: true } });
       await prisma.rsvp.upsert({
         where: { eventId_userId: { eventId, userId: caller.id } },
         create: { eventId, userId: caller.id, status },
         update: { status },
       });
+      if (status === "GOING") await noticeRsvp(caller.id, eventId, before?.status);
       return { eventId, status };
     },
   },
   {
     name: "update_my_profile",
+    summary: "Update your profile",
     description: "Update your own LOGICA member profile.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: {
@@ -391,6 +405,7 @@ export const TOOLS: Tool[] = [
   // ---- Board: run the pipeline ----------------------------------------
   {
     name: "list_guests",
+    summary: "See the speaker and guest pipeline",
     description:
       "Every speaker submission with its stage, so you can see who is waiting on a decision. Candidates who have confirmed their availability are the ones ready to decide on.",
     stages: WORKSPACE,
@@ -433,6 +448,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "common_slots",
+    summary: "Find dates that work for confirmed guests",
     description:
       "When two or more guests are all free at once — the overlap of their availability windows, the same thing the calendar grid shows a person. Pass submission ids from list_guests. An empty list means there is no time that works for everyone.",
     stages: WORKSPACE,
@@ -481,6 +497,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "reply_to_guest",
+    summary: "Reply to a guest's messages",
     description:
       "Post a message into a candidate's or speaker's thread, as the board. Use list_guests for the submission id.",
     stages: WORKSPACE,
@@ -498,26 +515,19 @@ export const TOOLS: Tool[] = [
       const body = String(input.body ?? "").trim();
       if (!body) fail("`body` is required.");
       if (body.length > 2000) fail("Messages are limited to 2000 characters.");
-      const submission = await prisma.speakerSubmission.findUnique({
-        where: { id: submissionId },
-        select: { id: true, user: { select: { id: true } } },
-      });
-      if (!submission) fail("No submission with that id.");
+      const lead = await threadLead(submissionId);
+      if (!lead) fail("No submission with that id.");
+      // Linked guests share one thread: the message lands there and reaches each of them.
       await prisma.speakerMessage.create({
-        data: { submissionId, authorId: caller.id, body },
+        data: { submissionId: lead, authorId: caller.id, body },
       });
-      if (submission.user) {
-        try {
-          await notifyUser(submission.user.id, "The LOGICA board replied about your talk.", "announcements");
-        } catch (error) {
-          console.error("Failed to notify speaker about new message", error);
-        }
-      }
+      for (const m of await threadMembers(lead)) await noticeGuestMessage({ userId: m.user?.id, email: m.email }, body);
       return { sent: true };
     },
   },
   {
     name: "decide_on_guest",
+    summary: "Confirm or decline a guest",
     description:
       "Confirm a candidate as a speaker, decline them, or move a speaker back to candidate. Confirming unlocks their talk details and event numbers.",
     stages: WORKSPACE,
@@ -538,31 +548,20 @@ export const TOOLS: Tool[] = [
       }
       const existing = await prisma.speakerSubmission.findUnique({
         where: { id: submissionId },
-        select: { id: true, user: { select: { id: true } } },
+        select: { id: true, email: true, status: true, user: { select: { id: true } } },
       });
       if (!existing) fail("No submission with that id.");
       const updated = await prisma.speakerSubmission.update({
         where: { id: submissionId },
         data: { status: decision as "CONFIRMED" | "DECLINED" | "PENDING" },
       });
-      if (existing.user && (decision === "CONFIRMED" || decision === "DECLINED")) {
-        try {
-          await notifyUser(
-            existing.user.id,
-            decision === "CONFIRMED"
-              ? "You're confirmed to speak at LOGICA @ UIC — sign in to your portal for details."
-              : "Your speaker submission to LOGICA @ UIC was declined.",
-            "announcements",
-          );
-        } catch (error) {
-          console.error("Failed to notify speaker about submission update", error);
-        }
-      }
+      await noticeGuestDecision({ userId: existing.user?.id, email: existing.email }, existing.status, decision);
       return { submissionId, status: updated.status };
     },
   },
   {
     name: "schedule_guest",
+    summary: "Link a guest to their event",
     description:
       "Attach a scheduled event to a speaker's submission. This is what turns on the RSVP and check-in numbers on their own dashboard. Pass eventId null to unlink.",
     stages: WORKSPACE,
@@ -581,23 +580,29 @@ export const TOOLS: Tool[] = [
       if (eventId && !(await prisma.event.findUnique({ where: { id: eventId } }))) {
         fail("No event with that id.");
       }
+      const before = await prisma.speakerSubmission.findUnique({ where: { id: submissionId }, select: { eventId: true } });
       const updated = await prisma.speakerSubmission.update({
         where: { id: submissionId },
         data: { eventId },
+        include: { event: true, user: { select: { id: true } } },
       });
+      if (updated.event && updated.event.id !== before?.eventId) {
+        await noticeGuestScheduled({ userId: updated.user?.id, email: updated.email }, updated.event);
+      }
       return { submissionId, eventId: updated.eventId };
     },
   },
   {
     name: "create_event",
+    summary: "Create events",
     description: "Put a new event on the LOGICA calendar. The description keeps its line breaks and emoji on the site, so it can be pasted as written; put the RSVP or sign-up form in `link` to get an RSVP button.",
     stages: WORKSPACE,
     inputSchema: {
       type: "object",
-      required: ["title", "startsAt"],
+      required: ["title"],
       properties: {
         title: str("What the event is called."),
-        startsAt: str("When it starts, as an ISO 8601 timestamp."),
+        startsAt: str("When it starts, as an ISO 8601 timestamp. Leave it out (or send \"TBD\") if the date isn't set yet."),
         location: str("Where it is."),
         description: str("What it is. Line breaks are kept."),
         link: str("An http(s) RSVP or event page, shown as an RSVP button."),
@@ -605,8 +610,12 @@ export const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (input) => {
-      const startsAt = new Date(String(input.startsAt ?? ""));
-      if (Number.isNaN(startsAt.getTime())) fail("`startsAt` must be an ISO 8601 timestamp.");
+      let startsAt: Date | null = null;
+      try {
+        startsAt = input.startsAt === undefined ? null : parseStartsAt(input.startsAt);
+      } catch (error) {
+        fail((error as Error).message);
+      }
       const title = String(input.title ?? "").trim();
       if (!title) fail("`title` is required.");
       const event = await prisma.event.create({
@@ -623,6 +632,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "update_event",
+    summary: "Edit events",
     description: "Change an event that's already on the calendar: fix its title, time, place, description or RSVP link. Only the fields you send change; send an empty string to clear location, description or link.",
     stages: WORKSPACE,
     inputSchema: {
@@ -631,7 +641,7 @@ export const TOOLS: Tool[] = [
       properties: {
         id: str("The event's id, from list_events."),
         title: str("New title."),
-        startsAt: str("New start time, as an ISO 8601 timestamp."),
+        startsAt: str("New start time, as an ISO 8601 timestamp, or \"TBD\" to clear the date."),
         location: str("New location, or empty to clear it."),
         description: str("New description, or empty to clear it. Line breaks are kept."),
         link: str("New http(s) RSVP or event page, or empty to clear it."),
@@ -641,22 +651,7 @@ export const TOOLS: Tool[] = [
     run: async (input) => {
       const id = String(input.id ?? "");
       if (!(await prisma.event.findUnique({ where: { id }, select: { id: true } }))) fail("No event with that id.");
-      const data: Prisma.EventUpdateInput = {};
-      if (input.title !== undefined) {
-        const title = String(input.title).trim();
-        if (!title) fail("`title` can't be empty.");
-        data.title = title;
-      }
-      if (input.startsAt !== undefined) {
-        const startsAt = new Date(String(input.startsAt));
-        if (Number.isNaN(startsAt.getTime())) fail("`startsAt` must be an ISO 8601 timestamp.");
-        data.startsAt = startsAt;
-      }
-      for (const field of ["location", "description"] as const) {
-        if (input[field] !== undefined) data[field] = input[field] === null || input[field] === "" ? null : String(input[field]);
-      }
-      if (input.link !== undefined) data.link = eventLink(input.link) ?? null;
-      if (Object.keys(data).length === 0) fail("Send at least one field to change.");
+      const data = parseEventUpdate(input);
       const event = await prisma.event.update({ where: { id }, data });
       return { id: event.id, title: event.title, startsAt: event.startsAt, location: event.location, link: event.link };
     },
@@ -671,6 +666,7 @@ export const TOOLS: Tool[] = [
   // routes — everything routes through lib/board-item.ts.
   {
     name: "list_board_items",
+    summary: "See money and outreach items",
     description:
       "List what the board is tracking — spending (MONEY) or companies and guests we're talking to (OUTREACH). Filter by stage, or by what's assigned to you.",
     stages: WORKSPACE,
@@ -738,6 +734,7 @@ export const TOOLS: Tool[] = [
 
   {
     name: "add_board_item",
+    summary: "Log a money or outreach item",
     description:
       "Track something new. MONEY for a cost the club is about to incur or has paid; OUTREACH for a company, speaker or partner we want to talk to. Amounts are whole cents.",
     stages: WORKSPACE,
@@ -782,6 +779,7 @@ export const TOOLS: Tool[] = [
 
   {
     name: "update_board_item",
+    summary: "Update a money or outreach item",
     description:
       "Move something along — approve a spend, mark that a company replied, hand it to someone else, or set when the next move is due.",
     stages: WORKSPACE,
@@ -838,6 +836,7 @@ export const TOOLS: Tool[] = [
 
   {
     name: "budget_status",
+    summary: "Check the budget",
     description:
       "What's left in the club's budget, what's waiting on approval, and who is owed money back out of their own pocket.",
     stages: WORKSPACE,
@@ -916,6 +915,7 @@ export const TOOLS: Tool[] = [
 
   {
     name: "club_insights",
+    summary: "See how the club is doing",
     description:
       "How the club is actually doing: how many members, how many are still turning up, which events landed, and who comes to everything.",
     stages: WORKSPACE,
@@ -932,6 +932,7 @@ export const TOOLS: Tool[] = [
 
   {
     name: "find_documents",
+    summary: "Find club documents in Drive",
     description:
       "Search the club's Google Drive by file name — the constitution, budgets, decks, run-of-shows. Returns links, not file contents.",
     stages: WORKSPACE,
@@ -963,6 +964,7 @@ export const TOOLS: Tool[] = [
   // ---- Everyone: what the platform is telling you ---------------------
   {
     name: "my_notifications",
+    summary: "Read your notifications",
     description:
       "Your LOGICA notifications, newest first — event reminders, board decisions, announcements. Says which are unread.",
     stages: ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"],
@@ -985,6 +987,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "mark_notification_read",
+    summary: "Mark notifications as read",
     description: "Mark one of your notifications as read, or all of them.",
     stages: ["CANDIDATE", "SPEAKER", "MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: {
@@ -1019,6 +1022,7 @@ export const TOOLS: Tool[] = [
   // ---- Members: turning up, and the feed -------------------------------
   {
     name: "check_in",
+    summary: "Check in at an event",
     description:
       "Check in to an event you're at, using the code the organiser puts up. This is what counts as attendance — an RSVP on its own doesn't.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
@@ -1055,6 +1059,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "my_engagement",
+    summary: "See your involvement",
     description: "How involved you've been: events attended, posts made, forms submitted.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: none,
@@ -1080,6 +1085,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "read_feed",
+    summary: "Read the community feed",
     description: "The club's community feed, newest first.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: none,
@@ -1095,6 +1101,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "post_to_feed",
+    summary: "Post to the community feed",
     description: "Post to the club's community feed. Everyone signed in can read it.",
     stages: ["MEMBER", "BOARD", "EXEC_BOARD"],
     inputSchema: {
@@ -1115,6 +1122,7 @@ export const TOOLS: Tool[] = [
   // ---- Guests: the bit set_talk doesn't cover --------------------------
   {
     name: "set_my_needs",
+    summary: "Tell us what you need in the room",
     description:
       "What you need in the room — projector, HDMI, a mic, dietary requirements, anything. Also takes a note for the board.",
     stages: ["CANDIDATE", "SPEAKER"],
@@ -1143,6 +1151,7 @@ export const TOOLS: Tool[] = [
   // ---- Exec: bringing guests in ----------------------------------------
   {
     name: "invite_guest",
+    summary: "Invite a guest and get their sign-up link",
     description:
       "Start a guest and get a single-use sign-up link to send them. They click it, pick an email and a password, and they're in their own dashboard — no second step from you. Returns the link ONCE; it can't be recovered, only replaced.",
     stages: WORKSPACE,
@@ -1204,6 +1213,7 @@ export const TOOLS: Tool[] = [
   // ---- Exec: the club's people -----------------------------------------
   {
     name: "list_members",
+    summary: "See the member roster",
     description:
       "The club roster: who's here, what they study, how much they've turned up, and what they are on the board.",
     stages: WORKSPACE,
@@ -1243,6 +1253,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "set_member_role",
+    summary: "Change a member's role",
     description:
       "Change what someone is on the board. Role decides access; officer only decides what gets pinned on their dashboard.",
     stages: ["EXEC_BOARD"],
@@ -1294,6 +1305,7 @@ export const TOOLS: Tool[] = [
   // ---- Exec: money and events ------------------------------------------
   {
     name: "set_budget",
+    summary: "Set the budget",
     description:
       "Create a budget for a term. Costs filed against it draw it down; what's left is worked out on the fly, never stored.",
     stages: ["EXEC_BOARD"],
@@ -1323,6 +1335,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "open_check_in",
+    summary: "Open check-in for an event",
     description:
       "Open check-in for an event and get the code to read out. Members use it with check_in; that's what counts as attendance.",
     stages: WORKSPACE,
@@ -1348,6 +1361,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "event_attendance",
+    summary: "See who attended an event",
     description: "Who said they were coming to an event and who actually turned up.",
     stages: WORKSPACE,
     inputSchema: {
@@ -1385,6 +1399,7 @@ export const TOOLS: Tool[] = [
   // ---- Exec: people asking to join --------------------------------------
   {
     name: "list_applications",
+    summary: "See membership applications",
     description: "People who applied to join the club, and where each one got to.",
     stages: WORKSPACE,
     inputSchema: {
@@ -1408,6 +1423,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "decide_on_application",
+    summary: "Accept or decline an application",
     description: "Accept, decline, or move a membership application to interview.",
     stages: WORKSPACE,
     inputSchema: {
@@ -1425,7 +1441,10 @@ export const TOOLS: Tool[] = [
       if (!["PENDING", "INTERVIEW", "ACCEPTED", "DECLINED"].includes(decision)) {
         fail("`decision` must be PENDING, INTERVIEW, ACCEPTED or DECLINED.");
       }
-      const existing = await prisma.membershipApplication.findUnique({ where: { id }, select: { id: true } });
+      const existing = await prisma.membershipApplication.findUnique({
+        where: { id },
+        select: { id: true, userId: true, email: true, track: true, status: true },
+      });
       if (!existing) fail("No application with that id.");
       const updated = await prisma.membershipApplication.update({
         where: { id },
@@ -1436,6 +1455,7 @@ export const TOOLS: Tool[] = [
         },
         select: { id: true, name: true, email: true, status: true },
       });
+      await noticeApplicant(existing, decision);
       return updated;
     },
   },
@@ -1443,6 +1463,7 @@ export const TOOLS: Tool[] = [
   // ---- Exec board only -------------------------------------------------
   {
     name: "announce",
+    summary: "Send an announcement",
     description:
       "Send an announcement to every member. Exec board only — this reaches everyone's notifications and inbox, so use it sparingly.",
     stages: ["EXEC_BOARD"],
@@ -1472,11 +1493,20 @@ export function toolsFor(stage: Stage) {
   return TOOLS.filter((t) => t.stages.includes(stage));
 }
 
-/** A one-liner for the dashboard, so people know what their agent can do. */
+/**
+ * What the dashboard shows: plain lines for this role's tools only. No tool
+ * names and no agent-facing descriptions, so nobody reads what another role's
+ * agent could do.
+ */
 export function toolSummary(stage: Stage) {
-  return toolsFor(stage).map((t) => ({
-    name: t.name,
-    description: t.description,
-    boardOnly: runsTheClub(stage) && !t.stages.includes("MEMBER"),
-  }));
+  return toolsFor(stage).map((t) => t.summary);
 }
+
+/** Something this role could actually say to its agent. */
+export const EXAMPLE_ASK: Record<Stage, string> = {
+  CANDIDATE: "I'm free Tuesday and Thursday afternoons in November.",
+  SPEAKER: "How many people have RSVPed to my talk?",
+  MEMBER: "RSVP me to the next workshop.",
+  BOARD: "RSVP me to the next workshop.",
+  EXEC_BOARD: "How much budget is left this semester?",
+};
