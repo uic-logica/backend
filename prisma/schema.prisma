@@ -82,6 +82,9 @@ model User {
   speakerMessages   SpeakerMessage[]
   mcpTokens         McpToken[]
   agentActivity     AgentActivity[]
+  boardThread       BoardMessage[]  @relation("BoardThread")
+  boardMessages     BoardMessage[]  @relation("BoardMessageAuthor")
+  threadReads       ThreadRead[]
 
   boardItems        BoardItem[]   @relation("BoardItemAuthor")
   ownedBoardItems   BoardItem[]   @relation("BoardItemOwner")
@@ -641,4 +644,31 @@ model AgentActivity {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+/// A member's thread with the board (members and applicants; guests use
+/// SpeakerMessage). One thread per member: memberId is whose thread it is.
+model BoardMessage {
+  id        String   @id @default(cuid())
+  memberId  String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  member User @relation("BoardThread", fields: [memberId], references: [id], onDelete: Cascade)
+  author User @relation("BoardMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, createdAt])
+}
+
+/// When someone last read a thread, for unread dots. `thread` is
+/// "speaker:<lead submission id>" or "member:<user id>"; each exec has their own.
+model ThreadRead {
+  userId String
+  thread String
+  readAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, thread])
 }

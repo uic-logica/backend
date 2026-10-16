@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { runsWorkspace } from "@/lib/authz";
 import { noticeExecsOfReply, noticeGuestMessage } from "@/lib/notices";
+import { markRead, speakerThread } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
 import { threadLead, threadMembers } from "@/lib/speaker-thread";
 
@@ -56,6 +57,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     take: 200,
     include: { author: AUTHOR },
   });
+  if (who.board) await markRead(who.user.id, speakerThread(lead));
   return NextResponse.json(messages);
 }
 
