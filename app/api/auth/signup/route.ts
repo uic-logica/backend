@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { isAllowedEmail } from "@/lib/allowed-email";
 import { jsonBody } from "@/lib/board-guard";
 import { passwordProblem } from "@/lib/invite";
 import { normalizeMemberEmail } from "@/lib/member-password";
-import { isAllowedEmail } from "@/lib/otp";
 import { hashPassword } from "@/lib/password";
 import { passwordRequestError } from "@/lib/password-request";
 import { prisma } from "@/lib/prisma";
