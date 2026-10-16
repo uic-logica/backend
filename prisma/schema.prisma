@@ -430,6 +430,9 @@ model SpeakerSubmission {
   // Cleared whenever the windows change, so "confirmed" never describes
   // times that have since moved.
   availabilityConfirmedAt DateTime?
+  // The board asked again for a specific range ({ from, to, note, at }), e.g.
+  // after a date fell through. Cleared when the speaker confirms new times.
+  availabilityRequest     Json?
 
   // Linked guests (co-founders, a panel) share one thread and one event:
   // each one points at the lead entry, whose own threadId stays null. Every
