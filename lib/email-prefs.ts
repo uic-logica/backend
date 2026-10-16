@@ -12,8 +12,8 @@ type Who = { role?: string | null; accountKind?: string | null };
 const isExec = (u: Who) => u.accountKind === "MEMBER" && u.role === "EXEC_BOARD";
 
 /** The categories a person can set, in the order Settings shows them. */
-export const CATEGORIES: { key: Exclude<Category, "decisions">; label: string; description: string; for: "member" | "guest" | "all" | "exec" }[] = [
-  { key: "messages", label: "Messages from the board", description: "When the board writes in your thread.", for: "all" },
+export const CATEGORIES: { key: Exclude<Category, "decisions">; label: string; description: string; for: "member" | "nonExec" | "exec" }[] = [
+  { key: "messages", label: "Messages from the board", description: "When the board writes in your thread.", for: "nonExec" },
   { key: "events", label: "Events", description: "Reminders, RSVP confirmations, posts and materials for events you're going to.", for: "member" },
   { key: "announcements", label: "Announcements", description: "News and updates from the LOGICA board.", for: "member" },
   { key: "guestReplies", label: "Guest replies", description: "A speaker or guest wrote in their thread.", for: "exec" },
@@ -24,7 +24,7 @@ export const CATEGORIES: { key: Exclude<Category, "decisions">; label: string; d
 export function categoriesFor(user: Who) {
   const exec = isExec(user);
   const guest = user.accountKind === "SPEAKER";
-  return CATEGORIES.filter((c) => c.for === "all" || (c.for === "member" && !guest) || (c.for === "exec" && exec));
+  return CATEGORIES.filter((c) => (c.for === "nonExec" && !exec) || (c.for === "member" && !guest) || (c.for === "exec" && exec));
 }
 
 /** The choices a person has: the daily summary is for the exec board only. */

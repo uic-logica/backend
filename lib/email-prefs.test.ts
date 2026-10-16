@@ -32,6 +32,6 @@ describe("email modes", () => {
     const keys = (u: object) => categoriesFor(u).map((c) => c.key);
     expect(keys(guest)).toEqual(["messages"]);
     expect(keys(member)).toEqual(["messages", "events", "announcements"]);
-    expect(keys(exec)).toEqual(["messages", "events", "announcements", "guestReplies", "memberMessages", "boardUpdates"]);
+    expect(keys(exec)).toEqual(["events", "announcements", "guestReplies", "memberMessages", "boardUpdates"]);
   });
 });
