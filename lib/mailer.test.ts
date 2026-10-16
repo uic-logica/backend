@@ -21,13 +21,13 @@ describe("sendMail through Resend", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ id: "re_123" }))));
     const { sendMail } = await import("./mailer");
     expect(await sendMail(mail)).toEqual({ id: "re_123" });
-    expect(logEmail).toHaveBeenCalledWith({ to: "ana@uic.edu", subject: "Hi", status: "SENT", providerId: "re_123" });
+    expect(logEmail).toHaveBeenCalledWith({ to: "ana@uic.edu", subject: "Hi", status: "SENT", providerId: "re_123", text: "t", html: "<p>t</p>" });
   });
 
   it("logs a refused email with Resend's reason and still throws", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "Domain not verified" }), { status: 403 })));
     const { sendMail } = await import("./mailer");
     await expect(sendMail(mail)).rejects.toThrow("Domain not verified");
-    expect(logEmail).toHaveBeenCalledWith({ to: "ana@uic.edu", subject: "Hi", status: "FAILED", error: "Domain not verified" });
+    expect(logEmail).toHaveBeenCalledWith({ to: "ana@uic.edu", subject: "Hi", status: "FAILED", error: "Domain not verified", text: "t", html: "<p>t</p>" });
   });
 });

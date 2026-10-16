@@ -46,7 +46,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ...(submit === false && { status: "DRAFT", submittedAt: null }),
     },
   });
-  if (submitting) await submitBlogPost(post.title, found.user.name);
+  if (submitting) await submitBlogPost(post.title, found.user.name, post.id);
   return NextResponse.json(post);
 }
 

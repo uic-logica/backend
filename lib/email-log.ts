@@ -11,10 +11,21 @@ export async function logEmail(row: {
   status: EmailStatus;
   error?: string | null;
   providerId?: string | null;
+  text?: string | null;
+  html?: string | null;
 }): Promise<void> {
   try {
     await prisma.emailLog.create({
-      data: { to: row.to, subject: row.subject.slice(0, 300), status: row.status, error: row.error?.slice(0, 500) ?? null, providerId: row.providerId ?? null },
+      data: {
+        to: row.to,
+        subject: row.subject.slice(0, 300),
+        status: row.status,
+        error: row.error?.slice(0, 500) ?? null,
+        providerId: row.providerId ?? null,
+        // ponytail: whole body kept (a few KB each); trim old rows if the table ever gets big.
+        text: row.text?.slice(0, 20_000) ?? null,
+        html: row.html?.slice(0, 100_000) ?? null,
+      },
     });
   } catch (err) {
     console.error("email log write failed", err);
