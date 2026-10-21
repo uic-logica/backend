@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { saveInterviewTimes } from "@/lib/interview";
 import { parseApplication } from "@/lib/membership-application";
 import { prisma } from "@/lib/prisma";
 
@@ -47,4 +48,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     data: { ...parsed.data, status: "PENDING" },
   });
   return NextResponse.json(updated);
+}
+
+/**
+ * The applicant shares interview times from their dashboard: the same save
+ * as the emailed link, for anyone signed in with the application's email.
+ */
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
+  }
+
+  const { id } = await params;
+  const existing = await prisma.membershipApplication.findUnique({
+    where: { id },
+    select: { id: true, name: true, userId: true, email: true, status: true },
+  });
+  const email = session.user.email?.toLowerCase();
+  const owns = existing && (existing.userId === session.user.id || (!!email && existing.email === email));
+  if (!existing || !owns) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  if (existing.status !== "INTERVIEW") {
+    return NextResponse.json({ error: "This application isn't at the interview step." }, { status: 409 });
+  }
+  return saveInterviewTimes(existing, payload);
 }

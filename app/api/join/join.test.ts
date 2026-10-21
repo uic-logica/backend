@@ -229,7 +229,7 @@ describe("GET /api/join/mine", () => {
       select: {
         id: true, track: true, status: true, projects: true, hoursPerWeek: true,
         name: true, major: true, gradYear: true, why: true, github: true, skills: true, resumeUrl: true,
-        reviewNote: true, canReapply: true, decidedAt: true, createdAt: true,
+        reviewNote: true, canReapply: true, decidedAt: true, interviewAvailability: true, interviewAvailabilityAt: true, createdAt: true,
       },
     });
   });
