@@ -30,6 +30,8 @@ export async function GET() {
       reviewNote: true,
       canReapply: true,
       decidedAt: true,
+      interviewAvailability: true,
+      interviewAvailabilityAt: true,
       createdAt: true,
     },
   });

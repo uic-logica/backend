@@ -172,7 +172,7 @@ export function applicantNotice(
             "Pick the times that work for you and the board will set up your interview.",
           ],
           button: interviewLink ? { label: "Share your availability", url: interviewLink } : { label: "Open your dashboard", url: dashboard },
-          footnote: interviewLink ? "This link is just for you. You can come back to it to change your times." : undefined,
+          footnote: interviewLink ? "This link is just for you. You can come back to it to change your times, or sign in with this email and do it from your dashboard." : undefined,
         },
       };
     case "NEEDS_INFO":
