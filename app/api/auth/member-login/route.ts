@@ -25,6 +25,11 @@ export async function POST(request: NextRequest) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${email}))`;
     const user = await tx.user.findUnique({ where: { email } });
     const valid = verifyPassword(password, user?.passwordHash || dummyHash);
+    // Signup already says when an email has an account (see its ponytail note),
+    // so hiding it here only strands people who never made one.
+    if (!user) {
+      return NextResponse.json({ error: "No LOGICA account uses that email.", reason: "no-account" }, { status: 404 });
+    }
     if (!valid || !user?.passwordHash || user.accountKind !== "MEMBER") {
       return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
     }
