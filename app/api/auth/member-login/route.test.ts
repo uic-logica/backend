@@ -46,7 +46,15 @@ describe("member password login", () => {
     expect(prisma.session.create).toHaveBeenCalledOnce();
   });
 
-  it.each([null, { ...user, passwordHash: null }, { ...user, accountKind: "SPEAKER" }, { ...user, passwordHash: "scrypt::" }])("rejects missing, unprovisioned, guest, and corrupt accounts", async (record) => {
+  it("tells someone with no account to create one", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    const response = await POST(request({ email: "person@uic.edu", password }));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "No LOGICA account uses that email.", reason: "no-account" });
+    expect(prisma.session.create).not.toHaveBeenCalled();
+  });
+
+  it.each([{ ...user, passwordHash: null }, { ...user, accountKind: "SPEAKER" }, { ...user, passwordHash: "scrypt::" }])("rejects unprovisioned, guest, and corrupt accounts", async (record) => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(record as User | null);
     const response = await POST(request({ email: "person@uic.edu", password }));
     expect(response.status).toBe(401);
