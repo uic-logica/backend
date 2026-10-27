@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
 
 /**
  * Manually creates an Auth.js-compatible database session and sets the
@@ -24,7 +23,7 @@ export async function attachSession(
   userId: string,
   request: Request,
   response: NextResponse,
-  db: Pick<Prisma.TransactionClient, "session"> = prisma,
+  db: Pick<typeof prisma, "session"> = prisma,
 ): Promise<void> {
   const sessionToken = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000);
