@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 // Password login creates database sessions directly. Passwordless is archived,
 // not registered: old provider callbacks cannot issue new sessions.
 const nextAuth = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  // The adapter's type predates Prisma's global `omit` (lib/prisma.ts); the
+  // queries are the same, it just never sees the photo and resume bytes.
+  adapter: PrismaAdapter(prisma as unknown as Parameters<typeof PrismaAdapter>[0]),
   providers: [],
   session: { strategy: "database" },
   callbacks: {

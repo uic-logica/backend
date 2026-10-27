@@ -143,6 +143,7 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -166,6 +167,9 @@ model Post {
 
   author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   event  Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  @@index([createdAt])
+  @@index([eventId, createdAt])
+  @@index([authorId, createdAt])
 }
 
 enum MaterialVisibility {
@@ -187,6 +191,7 @@ model EventMaterial {
 
   event      Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
   uploadedBy User  @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  @@index([eventId])
 }
 
 model Event {
@@ -246,6 +251,7 @@ model Rsvp {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, userId])
+  @@index([userId])
 }
 
 model Attendance {
@@ -260,6 +266,7 @@ model Attendance {
   checkedInBy User? @relation("CheckedInBy", fields: [checkedInById], references: [id], onDelete: SetNull)
 
   @@unique([eventId, userId])
+  @@index([userId, checkedInAt])
 }
 
 // The code members enter (or scan as a QR) to check in to an event (#5).
@@ -299,6 +306,7 @@ model Submission {
 
   form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
 }
 
 // Sign-in throttling per email address (#14). Kept in Postgres rather than
@@ -498,6 +506,7 @@ model Notification {
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
 }
 
 /**
