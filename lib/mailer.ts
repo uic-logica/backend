@@ -45,6 +45,7 @@ export async function sendMail({
     let id: string | null = null;
     if (process.env.RESEND_API_KEY) {
       const res = await fetch("https://api.resend.com/emails", {
+        signal: AbortSignal.timeout(10_000),
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ from: process.env.EMAIL_FROM, to, subject, text, html, ...(replyTo && { reply_to: replyTo }) }),
