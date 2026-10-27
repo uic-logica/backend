@@ -5,7 +5,9 @@ import { notifyEventGoing } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { parseUpload } from "@/lib/upload";
 
-const MAX_BYTES = 15 * 1024 * 1024; // 15MB — a slide deck
+// Vercel refuses request bodies over 4.5 MB and the file arrives base64 (4/3
+// larger), so 3 MB is the most that can actually get here.
+const MAX_BYTES = 3 * 1024 * 1024;
 
 async function isBoard(): Promise<boolean> {
   const session = await auth();

@@ -3,7 +3,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { parseUpload } from "@/lib/upload";
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB — a resume PDF, not a portfolio
+// 3 MB: the most a base64 body fits under Vercel's 4.5 MB request cap.
+const MAX_BYTES = 3 * 1024 * 1024;
 
 /** Any signed-in user (MEMBER or SPEAKER) — upload/replace your own resume. */
 export async function POST(request: NextRequest) {

@@ -51,7 +51,7 @@ export async function refreshDelivery(rows: { id: string; providerId: string | n
   await Promise.all(
     pending.map(async (r) => {
       try {
-        const res = await fetch(`https://api.resend.com/emails/${r.providerId}`, { headers: { Authorization: `Bearer ${key}` } });
+        const res = await fetch(`https://api.resend.com/emails/${r.providerId}`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
         if (!res.ok) return;
         const { last_event } = (await res.json()) as { last_event?: string };
         if (last_event && last_event !== r.delivery) {

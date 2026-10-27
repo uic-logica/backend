@@ -74,6 +74,7 @@ async function accessToken(): Promise<string> {
   const signature = createSign("RSA-SHA256").update(unsigned).end().sign(settings.key, "base64url");
 
   const response = await fetch(TOKEN_URL, {
+    signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -109,7 +110,7 @@ async function query(q: string, cacheKey: string): Promise<DriveFile[]> {
   url.searchParams.set("supportsAllDrives", "true");
   url.searchParams.set("includeItemsFromAllDrives", "true");
 
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error("Google Drive didn't answer. Try again in a moment.");
   const body = (await response.json()) as { files?: DriveFile[] };
   const files = body.files ?? [];
@@ -163,11 +164,12 @@ async function ensureFolder(parent: string, name: string): Promise<string> {
   url.searchParams.set("fields", "files(id)");
   url.searchParams.set("supportsAllDrives", "true");
   url.searchParams.set("includeItemsFromAllDrives", "true");
-  const found = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const found = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
   if (!found.ok) throw new Error("Google Drive didn't answer. Try again in a moment.");
   let id = ((await found.json()) as { files?: { id: string }[] }).files?.[0]?.id;
   if (!id) {
     const created = await fetch(`${FILES_URL}?supportsAllDrives=true&fields=id`, {
+      signal: AbortSignal.timeout(10_000),
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parent] }),
@@ -196,6 +198,7 @@ export async function uploadReceipt(file: { name: string; mimeType: string; byte
     Buffer.from(`\r\n--${boundary}--`),
   ]);
   const response = await fetch(`${UPLOAD_URL}?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink`, {
+    signal: AbortSignal.timeout(20_000),
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
     body,

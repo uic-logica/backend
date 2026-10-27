@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const tokenResponse = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+      signal: AbortSignal.timeout(10_000),
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
     if (typeof token.access_token !== "string") return fail();
 
     const infoResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
+      signal: AbortSignal.timeout(10_000),
       headers: { Authorization: `Bearer ${token.access_token}` },
       cache: "no-store",
     });
@@ -59,7 +61,7 @@ export async function GET(request: NextRequest) {
     const info = (await infoResponse.json()) as LinkedInUserInfo;
     if (typeof info.sub !== "string" || typeof info.picture !== "string") return fail();
 
-    const photoResponse = await fetch(info.picture, { cache: "no-store", redirect: "follow" });
+    const photoResponse = await fetch(info.picture, { cache: "no-store", redirect: "follow", signal: AbortSignal.timeout(10_000) });
     if (!photoResponse.ok) return fail();
     const declaredLength = Number(photoResponse.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > 2 * 1024 * 1024) return fail();
