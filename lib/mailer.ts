@@ -31,12 +31,16 @@ export async function sendMail({
   subject,
   text,
   html,
+  redact,
 }: {
   to: string;
   subject: string;
   text: string;
   html: string;
+  /** A secret in the body (a reset link) blanked out of the logged copy; execs can read the log. */
+  redact?: string;
 }): Promise<{ id: string | null }> {
+  const hide = (body: string) => (redact ? body.replaceAll(redact, "[redacted]") : body);
   try {
     if (!smtp.host || !process.env.EMAIL_FROM) {
       throw new Error("Set RESEND_API_KEY (or EMAIL_SERVER_HOST) and EMAIL_FROM to send email");
@@ -59,10 +63,10 @@ export async function sendMail({
       if (failed.length) throw new Error(`Email could not be sent to ${failed.join(", ")}`);
       id = result.messageId ?? null;
     }
-    await logEmail({ to, subject, status: "SENT", providerId: process.env.RESEND_API_KEY ? id : null, text, html });
+    await logEmail({ to, subject, status: "SENT", providerId: process.env.RESEND_API_KEY ? id : null, text: hide(text), html: hide(html) });
     return { id };
   } catch (err) {
-    await logEmail({ to, subject, status: "FAILED", error: (err as Error).message, text, html });
+    await logEmail({ to, subject, status: "FAILED", error: (err as Error).message, text: hide(text), html: hide(html) });
     throw err;
   }
 }

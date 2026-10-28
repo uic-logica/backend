@@ -23,6 +23,21 @@ There are two entry points, both using `issueMemberPassword()`:
 
 The generated password is 24 base64url characters. Only its hash is stored. Issuance preserves existing roles and creates new accounts as MEMBER. It revokes that user's sessions and MCP tokens and deletes old email verification tokens in the same transaction. It does not send email. Deliver credentials privately after verifying the recipient.
 
+### Self-service reset (emailed link)
+
+Anyone with an account (member or guest) can reset their own password; the exec paths above are now the fallback.
+
+```
+/reset-password ──POST /api/auth/forgot-password { email }──▶ email: /reset-password#token=rst_…
+       ▲                                                                   │
+       └──────────── POST /api/auth/reset-password { token, password } ◀──┘
+```
+
+- **Request:** always answers `{ ok: true }`, account or not. Limited to 3 per address and 20 per client per hour (in-memory `lib/rate-limit.ts`). Emails only when the address has an account.
+- **Link:** 256 random bits, stored only as a SHA-256 hash in `VerificationToken` (`identifier` = email). One hour, single use, newest request replaces older links. The secret travels in the URL fragment, so it never reaches a server log.
+- **Reset:** same 10–200 character rule as signup (`passwordProblem()`). Under the per-email lock it spends the link, sets the hash, clears `mustChangePassword`, ends every session, revokes MCP tokens, and drops any other links. It does not sign the caller in; the page sends them to the right sign-in form.
+- An exec reset (`issueMemberPassword()`) also deletes outstanding links.
+
 `POST /api/auth/signup` is the public member signup route. Signed-out callers provide a name, an address in `ALLOWED_EMAIL_DOMAIN`, and a 10–200 character password; the password rules come from `passwordProblem()` in `lib/invite.ts`, so signup and invite claim cannot drift apart. It always creates MEMBER accounts with the MEMBER role and starts a session. It rejects a caller who already has one. Requests are limited to five attempts per normalized email per hour, and the existence check runs under the same per-email advisory lock as login and issuance.
 
 An address that already has an account gets a 409 naming that fact. **This is an account enumeration oracle for university addresses, accepted deliberately.** The generic-response alternative does not work here: a new account is signed in, so its response carries `Set-Cookie` and the refusal does not, which distinguishes the two anyway — and it strands a returning member on a success screen with no session. If this ever has to genuinely hide, the only honest form is to stop creating the session in this route so both paths return a bare `{ ok: true }` and everyone signs in afterwards.
