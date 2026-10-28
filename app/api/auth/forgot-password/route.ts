@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
       await sendMail({
         to: email,
         subject: "Reset your LOGICA password",
+        redact: secret,
         ...renderEmail({
           preheader: "This link works once and expires in an hour.",
           heading: "Reset your password",

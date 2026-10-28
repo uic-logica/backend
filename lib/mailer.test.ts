@@ -30,4 +30,13 @@ describe("sendMail through Resend", () => {
     await expect(sendMail(mail)).rejects.toThrow("Domain not verified");
     expect(logEmail).toHaveBeenCalledWith({ to: "ana@uic.edu", subject: "Hi", status: "FAILED", error: "Domain not verified", text: "t", html: "<p>t</p>" });
   });
+
+  it("sends a redacted secret but keeps it out of the log", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ id: "re_1" })));
+    vi.stubGlobal("fetch", fetchMock);
+    const { sendMail } = await import("./mailer");
+    await sendMail({ ...mail, text: "go to /reset#token=rst_abc", html: "<a href='/reset#token=rst_abc'>x</a>", redact: "rst_abc" });
+    expect(fetchMock.mock.calls[0][1]?.body).toContain("rst_abc");
+    expect(JSON.stringify(vi.mocked(logEmail).mock.calls)).not.toContain("rst_abc");
+  });
 });
