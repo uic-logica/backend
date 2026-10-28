@@ -195,7 +195,7 @@ export function applicantNotice(
           eyebrow: "Welcome to LOGICA",
           heading: "You're in",
           paragraphs: [`Your ${role} application was accepted. Your next steps are waiting in your dashboard.`],
-          button: { label: "See next steps", url: dashboard },
+          button: { label: "See next steps", url: role === "Software Teams" ? `${dashboard}/teams` : dashboard },
         },
       };
     case "DECLINED":
