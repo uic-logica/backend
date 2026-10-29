@@ -3,6 +3,15 @@ import { auth } from "@/auth";
 import { noticeRsvp } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
 
+/** The signed-in person's RSVP to this event: `{ status }`, null if they haven't answered. The public event page reads it. */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  const { id: eventId } = await params;
+  const rsvp = await prisma.rsvp.findUnique({ where: { eventId_userId: { eventId, userId: session.user.id } }, select: { status: true } });
+  return NextResponse.json({ status: rsvp?.status ?? null });
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
