@@ -67,6 +67,10 @@ model User {
   resumeMimeType      String?
   speakerSubmissionId String?            @unique
   speakerSubmission   SpeakerSubmission? @relation(fields: [speakerSubmissionId], references: [id])
+  // Software Teams: the team the board placed them on, and the GitHub login
+  // their tasks (GitHub issues labeled "team: …") are assigned to.
+  team                TeamProject?
+  github              String?
 
   accounts          Account[]
   sessions          Session[]

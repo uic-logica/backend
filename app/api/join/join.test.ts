@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/lib/teams", async (load) => ({ ...(await load<typeof import("@/lib/teams")>()), placeOnTeam: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn(), tell: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
   membershipApplication: {
@@ -13,6 +14,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
 import { auth } from "@/auth";
 import { tell } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { placeOnTeam } from "@/lib/teams";
 import * as list from "./route";
 import * as review from "./[id]/route";
 import * as mine from "./mine/route";
@@ -274,6 +276,15 @@ describe("PATCH /api/join/:id review", () => {
       data: expect.objectContaining({ status: "DECLINED", canReapply: false, decidedAt: expect.any(Date) }),
     });
     expect(tell).toHaveBeenCalledWith({ userId: "u9", email: "ada@uic.edu" }, expect.not.stringContaining("apply again"), expect.any(String), expect.any(Object), "decisions");
+  });
+
+  it("places an accepted Software Teams applicant on the chosen team, quietly", async () => {
+    board();
+    vi.mocked(prisma.membershipApplication.findUnique).mockResolvedValue({ id: "app-1", userId: "u9", email: "ada@uic.edu", track: "SOFTWARE_ENGINEER", status: "INTERVIEW" } as never);
+    expect((await patch({ status: "ACCEPTED", team: "NOPE" })).status).toBe(400);
+    expect((await patch({ status: "ACCEPTED", team: "EVENT_REPLAYS" })).status).toBe(200);
+    expect(placeOnTeam).toHaveBeenCalledWith("u9", "EVENT_REPLAYS", false);
+    expect(tell).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(String), expect.objectContaining({ button: expect.objectContaining({ url: expect.stringMatching(/\/dashboard\/teams$/) }) }), "decisions");
   });
 
   it("emails an applicant with no account at the address they applied with, once per status", async () => {

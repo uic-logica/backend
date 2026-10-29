@@ -4,10 +4,12 @@ import { isBoardAccount, runsWorkspace } from "@/lib/authz";
 import { STATUSES, isStatus } from "@/lib/membership-application";
 import { noticeApplicant } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
+import { isTeam, placeOnTeam } from "@/lib/teams";
 
 /**
  * Board only: moves an application between statuses. NEEDS_INFO needs a
  * `note` for the applicant; DECLINED takes `canReapply` (default true).
+ * ACCEPTED on a Software Teams application can take `team` to place them.
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -23,7 +25,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const { status, note, canReapply } = (payload ?? {}) as { status?: unknown; note?: unknown; canReapply?: unknown };
+  const { status, note, canReapply, team } = (payload ?? {}) as { status?: unknown; note?: unknown; canReapply?: unknown; team?: unknown };
   if (!isStatus(status)) {
     return NextResponse.json({ error: `\`status\` must be one of: ${STATUSES.join(", ")}.` }, { status: 400 });
   }
@@ -33,6 +35,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   if (canReapply !== undefined && typeof canReapply !== "boolean") {
     return NextResponse.json({ error: "`canReapply` must be true or false." }, { status: 400 });
+  }
+
+  if (team !== undefined && team !== null && !isTeam(team)) {
+    return NextResponse.json({ error: "`team` must be one of the Software Teams projects." }, { status: 400 });
   }
 
   const { id } = await params;
@@ -53,6 +59,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     },
   });
 
+  if (status === "ACCEPTED" && isTeam(team) && existing.track === "SOFTWARE_ENGINEER" && existing.userId) {
+    await placeOnTeam(existing.userId, team, false);
+  }
   await noticeApplicant(existing, status, trimmed, canReapply ?? true);
   return NextResponse.json(updated);
 }
