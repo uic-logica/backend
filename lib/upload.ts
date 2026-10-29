@@ -7,7 +7,7 @@
  */
 export type ParsedUpload = { filename: string; mimeType: string; data: Uint8Array<ArrayBuffer> };
 
-export type UploadKind = "pdf" | "docx" | "doc" | "pptx" | "ppt" | "png" | "jpeg";
+export type UploadKind = "pdf" | "docx" | "doc" | "pptx" | "ppt" | "png" | "jpeg" | "webp" | "gif";
 
 const TYPES: Record<UploadKind, { extensions: string[]; normalizedMimeType: string }> = {
   pdf: { extensions: [".pdf"], normalizedMimeType: "application/pdf" },
@@ -25,6 +25,8 @@ const TYPES: Record<UploadKind, { extensions: string[]; normalizedMimeType: stri
   ppt: { extensions: [".ppt"], normalizedMimeType: "application/vnd.ms-powerpoint" },
   png: { extensions: [".png"], normalizedMimeType: "image/png" },
   jpeg: { extensions: [".jpg", ".jpeg"], normalizedMimeType: "image/jpeg" },
+  webp: { extensions: [".webp"], normalizedMimeType: "image/webp" },
+  gif: { extensions: [".gif"], normalizedMimeType: "image/gif" },
 };
 
 function hasPrefix(data: Buffer, prefix: number[] | string): boolean {
@@ -36,6 +38,8 @@ function hasSignature(kind: UploadKind, data: Buffer): boolean {
   if (kind === "pdf") return hasPrefix(data, "%PDF-");
   if (kind === "png") return hasPrefix(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (kind === "jpeg") return hasPrefix(data, [0xff, 0xd8, 0xff]);
+  if (kind === "webp") return hasPrefix(data, "RIFF") && data.subarray(8, 12).equals(Buffer.from("WEBP", "ascii"));
+  if (kind === "gif") return hasPrefix(data, "GIF8");
   if (kind === "doc" || kind === "ppt") return hasPrefix(data, [0xd0, 0xcf, 0x11, 0xe0]);
   return hasPrefix(data, [0x50, 0x4b, 0x03, 0x04]);
 }

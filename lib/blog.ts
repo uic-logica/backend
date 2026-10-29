@@ -37,10 +37,27 @@ export function blogSlug(title: string, id: string): string {
   return words ? `${words}-${suffix}` : suffix;
 }
 
-/** First ~200 characters of the first paragraph, for the /blog list. */
+/** A picture paragraph: ![caption](/api/blog/images/<id>), only our own uploads. */
+export const BLOG_IMAGE = /^!\[([^\]]*)\]\((\/api\/blog\/images\/[a-z0-9]+)\)$/;
+
+/** A paragraph as plain text: links keep their words, ## and - markers go. */
+const plain = (p: string) =>
+  p.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,3} |^- /gm, "").replace(/\s+/g, " ").trim();
+
+/** First ~200 characters of the first text paragraph (not a picture or heading), for the /blog list. */
 export function blogExcerpt(body: string): string {
-  const first = body.split(/\n\s*\n/)[0].replace(/\s+/g, " ").trim();
+  const paragraphs = body.split(/\n\s*\n/).map((p) => p.trim());
+  const first = plain(paragraphs.find((p) => p && !BLOG_IMAGE.test(p) && !/^#{1,3} [^\n]*$/.test(p)) ?? "");
   return first.length > 200 ? `${first.slice(0, 197).trimEnd()}...` : first;
+}
+
+/** The post's first picture, shown as its cover on /blog. */
+export function blogCover(body: string): string | null {
+  for (const p of body.split(/\n\s*\n/)) {
+    const image = BLOG_IMAGE.exec(p.trim());
+    if (image) return image[2];
+  }
+  return null;
 }
 
 export const authorSelect = { select: { id: true, name: true, photoUrl: true } } as const;
