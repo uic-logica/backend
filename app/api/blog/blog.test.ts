@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/auth";
-import { blogExcerpt, blogSlug } from "@/lib/blog";
+import { blogCover, blogExcerpt, blogSlug } from "@/lib/blog";
 import { prisma } from "@/lib/prisma";
 import * as list from "./route";
 import * as one from "./[slug]/route";
@@ -9,12 +9,15 @@ import * as mine from "./mine/route";
 import * as mineOne from "./mine/[id]/route";
 import * as review from "./review/route";
 import * as reviewOne from "./review/[id]/route";
+import * as images from "./images/route";
+import * as image from "./images/[id]/route";
 
 vi.mock("@/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/notify", () => ({ notifyUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     blogPost: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    blogImage: { count: vi.fn(), create: vi.fn(), findUnique: vi.fn() },
     user: { findMany: vi.fn() },
     notification: { createMany: vi.fn() },
   },
@@ -41,7 +44,7 @@ describe("public reads", () => {
     as(null);
     const body = await (await list.GET()).json();
     expect(prisma.blogPost.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: "PUBLISHED" } }));
-    expect(body[0]).toEqual({ title: "t", excerpt: "One." });
+    expect(body[0]).toEqual({ title: "t", excerpt: "One.", cover: null });
 
     vi.mocked(prisma.blogPost.findFirst).mockResolvedValue(null);
     const res = await one.GET(req("GET"), { params: Promise.resolve({ slug: "draft-x" }) });
@@ -142,5 +145,50 @@ describe("helpers", () => {
     expect(blogSlug("¡Qué onda, LOGICA!", "abcdef123456")).toBe("que-onda-logica-123456");
     expect(blogSlug("!!!", "abcdef123456")).toBe("123456");
     expect(blogExcerpt("a ".repeat(150)).length).toBeLessThanOrEqual(200);
+  });
+
+  it("excerpts skip pictures and headings, strip links; the first picture is the cover", () => {
+    const body = "![Yurii](/api/blog/images/clximg1)\n\n## Why him\n\nHe judged [HackHarvard](https://hackharvard.io).\n\n![](/api/blog/images/clximg2)";
+    expect(blogExcerpt(body)).toBe("He judged HackHarvard.");
+    expect(blogCover(body)).toBe("/api/blog/images/clximg1");
+    expect(blogCover("![x](https://evil.example/x.png)")).toBeNull();
+  });
+});
+
+describe("blog pictures", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString("base64");
+  const upload = (body: unknown) => images.POST(req("POST", body));
+
+  it("members upload a picture and get its URL back", async () => {
+    vi.mocked(prisma.blogImage.count).mockResolvedValue(0);
+    vi.mocked(prisma.blogImage.create).mockResolvedValue({ id: "clximg1" } as never);
+    const res = await upload({ filename: "yurii.png", mimeType: "image/png", data: png });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ id: "clximg1", url: "/api/blog/images/clximg1" });
+    expect(prisma.blogImage.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ authorId: "u1", mimeType: "image/png" }) }));
+  });
+
+  it("refuses guests, speakers, non-images and members over the cap", async () => {
+    as(null);
+    expect((await upload({ filename: "a.png", mimeType: "image/png", data: png })).status).toBe(401);
+    as("MEMBER", "SPEAKER");
+    expect((await upload({ filename: "a.png", mimeType: "image/png", data: png })).status).toBe(403);
+    as("MEMBER");
+    expect((await upload({ filename: "a.svg", mimeType: "image/svg+xml", data: Buffer.from("<svg/>").toString("base64") })).status).toBe(400);
+    expect((await upload({ filename: "a.png", mimeType: "image/png", data: Buffer.from("%PDF-1").toString("base64") })).status).toBe(400);
+    vi.mocked(prisma.blogImage.count).mockResolvedValue(100);
+    expect((await upload({ filename: "a.png", mimeType: "image/png", data: png })).status).toBe(429);
+    expect(prisma.blogImage.create).not.toHaveBeenCalled();
+  });
+
+  it("serves a picture publicly with a long cache, 404s unknown ids", async () => {
+    as(null);
+    vi.mocked(prisma.blogImage.findUnique).mockResolvedValue({ mimeType: "image/png", data: new Uint8Array([1, 2, 3]) } as never);
+    const res = await image.GET(req("GET"), { params: Promise.resolve({ id: "clximg1" }) });
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(res.headers.get("Cache-Control")).toContain("immutable");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    vi.mocked(prisma.blogImage.findUnique).mockResolvedValue(null);
+    expect((await image.GET(req("GET"), { params: Promise.resolve({ id: "nope" }) })).status).toBe(404);
   });
 });
