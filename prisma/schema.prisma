@@ -76,6 +76,7 @@ model User {
   sessions          Session[]
   posts             Post[]
   blogPosts         BlogPost[]
+  blogImages        BlogImage[]
   rsvps             Rsvp[]
   attendances       Attendance[]     @relation("Attended")
   checkIns          Attendance[]     @relation("CheckedInBy")
@@ -620,6 +621,21 @@ model BlogPost {
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([status, publishedAt])
+}
+
+/// A picture in a blog post, uploaded from the dashboard editor. The body
+/// references it as ![caption](/api/blog/images/<id>). ponytail: bytes in
+/// Postgres like User.resumeData; Blob storage if posts get image-heavy.
+model BlogImage {
+  id        String   @id @default(cuid())
+  authorId  String
+  mimeType  String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
 }
 
 enum EmailStatus {
