@@ -12,6 +12,13 @@ describe("parseEventUpdate", () => {
     expect(data.startsAt).toEqual(new Date("2026-11-12T01:00:00.000Z"));
   });
 
+  it("takes an end time after the start, and drops it when the date goes TBD", () => {
+    const data = parseEventUpdate({ startsAt: "2026-11-23T23:00:00.000Z", endsAt: "2026-11-24T00:30:00.000Z" });
+    expect(data.endsAt).toEqual(new Date("2026-11-24T00:30:00.000Z"));
+    expect(() => parseEventUpdate({ startsAt: "2026-11-23T23:00:00.000Z", endsAt: "2026-11-23T22:00:00.000Z" })).toThrow(EventInputError);
+    expect(parseEventUpdate({ startsAt: "TBD", endsAt: "2026-11-24T00:30:00.000Z" }).endsAt).toBeNull();
+  });
+
   it("clears location, description and link with an empty string", () => {
     expect(parseEventUpdate({ location: "", description: "", link: "" })).toEqual({ location: null, description: null, link: null });
   });

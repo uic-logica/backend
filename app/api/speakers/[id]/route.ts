@@ -94,8 +94,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "`newEvent` needs a `title`." }, { status: 400 });
     }
     try {
-      const { title, startsAt, location, description, link } = parseEventUpdate(input);
-      create = { title, startsAt, location, description, link } as Prisma.EventCreateWithoutSpeakersInput;
+      const { title, startsAt, endsAt, location, description, link } = parseEventUpdate(input);
+      create = { title, startsAt, endsAt, location, description, link } as Prisma.EventCreateWithoutSpeakersInput;
     } catch (error) {
       if (error instanceof EventInputError) return NextResponse.json({ error: error.message }, { status: 400 });
       throw error;

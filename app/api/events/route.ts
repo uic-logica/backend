@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isBoardAccount } from "@/lib/authz";
-import { EventInputError, parseStartsAt } from "@/lib/event-update";
+import { EventInputError, parseEndsAt, parseStartsAt } from "@/lib/event-update";
 import { parseHttpLink } from "@/lib/link";
 import { prisma } from "@/lib/prisma";
 
@@ -28,14 +28,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
 
-  const { title, description, location, startsAt, link } = (payload ?? {}) as Record<string, unknown>;
+  const { title, description, location, startsAt, endsAt, link } = (payload ?? {}) as Record<string, unknown>;
   if (typeof title !== "string" || title.trim().length === 0) {
     return NextResponse.json({ error: "`title` is required." }, { status: 400 });
   }
   // Missing, null or "TBD" means the date isn't set yet.
   let start: Date | null;
+  let end: Date | null;
   try {
     start = startsAt === undefined ? null : parseStartsAt(startsAt);
+    end = start && endsAt != null ? parseEndsAt(endsAt, start) : null;
   } catch (error) {
     if (error instanceof EventInputError) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
       location: typeof location === "string" ? location : null,
       link: eventLink || null,
       startsAt: start,
+      endsAt: end,
     },
   });
   return NextResponse.json(event, { status: 201 });

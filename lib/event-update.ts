@@ -30,6 +30,15 @@ export function parseStartsAt(value: unknown): Date | null {
   return startsAt;
 }
 
+/** An event's end: an ISO 8601 timestamp after `startsAt`, or null / "" for none. */
+export function parseEndsAt(value: unknown, startsAt?: Date | null): Date | null {
+  if (value === null || value === "") return null;
+  const endsAt = new Date(String(value));
+  if (Number.isNaN(endsAt.getTime())) throw new EventInputError("`endsAt` must be an ISO 8601 timestamp, or null for none.");
+  if (startsAt && endsAt <= startsAt) throw new EventInputError("The event has to end after it starts.");
+  return endsAt;
+}
+
 export function parseEventUpdate(input: Record<string, unknown>): Prisma.EventUpdateInput {
   const data: Prisma.EventUpdateInput = {};
   if (input.title !== undefined) {
@@ -38,6 +47,10 @@ export function parseEventUpdate(input: Record<string, unknown>): Prisma.EventUp
     data.title = title;
   }
   if (input.startsAt !== undefined) data.startsAt = parseStartsAt(input.startsAt);
+  // logica-lean: end-after-start is only checked when both are sent (the dashboard form always sends both).
+  if (input.endsAt !== undefined) data.endsAt = parseEndsAt(input.endsAt, data.startsAt as Date | null | undefined);
+  // No date means no end time either.
+  if (data.startsAt === null) data.endsAt = null;
   for (const field of ["location", "description"] as const) {
     if (input[field] !== undefined) data[field] = input[field] === null || input[field] === "" ? null : String(input[field]);
   }
