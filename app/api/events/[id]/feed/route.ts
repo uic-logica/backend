@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { notifyEventGoing } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { validatePostBody } from "@/lib/request-limits";
+import { later } from "@/lib/later";
 
 /** Signed-in — notes/thoughts on this specific event, same idea as the general feed. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -44,11 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
 
   const who = post.author.name?.trim() || "Someone";
-  try {
-    await notifyEventGoing(id, `${who} posted on ${event.title}: ${post.body}`, "events", session.user.id);
-  } catch (error) {
-    console.error("Failed to notify event attendees about new post", error);
-  }
+  await later(() => notifyEventGoing(id, `${who} posted on ${event.title}: ${post.body}`, "events", session.user.id));
 
   return NextResponse.json(post, { status: 201 });
 }

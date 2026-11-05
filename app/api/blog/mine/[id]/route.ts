@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { parseBlogInput } from "@/lib/blog";
 import { submitBlogPost } from "@/lib/blog-notify";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -46,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ...(submit === false && { status: "DRAFT", submittedAt: null }),
     },
   });
-  if (submitting) await submitBlogPost(post.title, found.user.name, post.id);
+  if (submitting) await later(() => submitBlogPost(post.title, found.user.name, post.id));
   return NextResponse.json(post);
 }
 

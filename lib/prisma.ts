@@ -8,7 +8,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 // pg's defaults wait forever for a free connection and never time a query out,
 // so one stuck query or a burst of requests would hang until the function is killed.
 const adapter = new PrismaPg(
-  { connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 5_000, query_timeout: 15_000 },
+  {
+    connectionString: process.env.DATABASE_URL,
+    connectionTimeoutMillis: 5_000,
+    query_timeout: 15_000,
+    // pg drops an idle connection after 10s by default; the next request then
+    // pays a fresh TCP + TLS + auth handshake (~300ms). Keep it a minute.
+    idleTimeoutMillis: 60_000,
+  },
   process.env.DB_SCHEMA ? { schema: process.env.DB_SCHEMA } : undefined,
 );
 

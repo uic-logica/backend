@@ -5,6 +5,7 @@ import { STATUSES, isStatus } from "@/lib/membership-application";
 import { noticeApplicant } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
 import { isTeam, placeOnTeam } from "@/lib/teams";
+import { later } from "@/lib/later";
 
 /**
  * Board only: moves an application between statuses. NEEDS_INFO needs a
@@ -62,7 +63,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (status === "ACCEPTED" && isTeam(team) && existing.track === "SOFTWARE_ENGINEER" && existing.userId) {
     await placeOnTeam(existing.userId, team, false);
   }
-  await noticeApplicant(existing, status, trimmed, canReapply ?? true);
+  await later(() => noticeApplicant(existing, status, trimmed, canReapply ?? true));
   return NextResponse.json(updated);
 }
 
