@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBoard } from "@/lib/board-guard";
 import { markRead, memberThread, messageBody, noticeMemberMessage } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 const AUTHOR = { select: { id: true, name: true, role: true, accountKind: true } } as const;
 
@@ -40,6 +41,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     include: { author: AUTHOR },
   });
   await markRead(gate.user.id, memberThread(userId));
-  await noticeMemberMessage(userId, parsed.body);
+  await later(() => noticeMemberMessage(userId, parsed.body));
   return NextResponse.json(message, { status: 201 });
 }

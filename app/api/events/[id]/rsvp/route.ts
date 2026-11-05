@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { noticeRsvp } from "@/lib/notices";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 /** The signed-in person's RSVP to this event: `{ status }`, null if they haven't answered. The public event page reads it. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,6 +36,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     create: { eventId, userId: session.user.id, status },
     update: { status },
   });
-  if (status === "GOING") await noticeRsvp(session.user.id, eventId, before?.status);
+  if (status === "GOING") await later(() => noticeRsvp(session.user.id, eventId, before?.status));
   return NextResponse.json(rsvp);
 }

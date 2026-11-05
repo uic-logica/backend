@@ -6,6 +6,7 @@ import { EventInputError, parseEventUpdate } from "@/lib/event-update";
 import { noticeGuestDecision, noticeGuestScheduled } from "@/lib/notices";
 import { threadMembers } from "@/lib/speaker-thread";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 const STATUSES = ["PENDING", "CONFIRMED", "DECLINED"] as const;
 
@@ -126,7 +127,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   // Tell the guest (their account, or the email they gave us).
   const guest = { userId: updated.user?.id, email: existing.email };
-  if (status !== undefined) await noticeGuestDecision(guest, existing.status, String(status));
+  if (status !== undefined) await later(() => noticeGuestDecision(guest, existing.status, String(status)));
 
   // Linked guests share one event: whatever this one got, the others get too.
   if (updated.eventId !== existing.eventId) {
@@ -135,10 +136,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (others.length) {
       await prisma.speakerSubmission.updateMany({ where: { id: { in: others.map((m) => m.id) } }, data: { eventId: updated.eventId } });
     }
-    if (updated.event) {
-      for (const m of [{ user: updated.user, email: existing.email }, ...others]) {
-        await noticeGuestScheduled({ userId: m.user?.id, email: m.email }, updated.event);
-      }
+    const event = updated.event;
+    if (event) {
+      await later(() => Promise.all([{ user: updated.user, email: existing.email }, ...others].map((m) => noticeGuestScheduled({ userId: m.user?.id, email: m.email }, event))));
     }
   }
 

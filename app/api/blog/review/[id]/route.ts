@@ -4,6 +4,7 @@ import { runsWorkspace } from "@/lib/authz";
 import { authorSelect, blogSlug } from "@/lib/blog";
 import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 const ACTIONS = ["publish", "reject", "unpublish"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -50,7 +51,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     include: { author: authorSelect },
   });
 
-  await notifyUser(
+  await later(() => notifyUser(
     post.authorId,
     action === "publish"
       ? `Your blog post "${post.title}" is live on the site.`
@@ -61,6 +62,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     undefined,
     undefined,
     `/dashboard/blog?id=${post.id}`,
-  );
+  ));
   return NextResponse.json(updated);
 }

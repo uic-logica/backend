@@ -5,6 +5,7 @@ import { noticeExecsOfReply, noticeGuestMessage } from "@/lib/notices";
 import { markRead, speakerThread } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
 import { threadLead, threadMembers } from "@/lib/speaker-thread";
+import { later } from "@/lib/later";
 
 const MAX_BODY = 2000;
 
@@ -92,15 +93,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Board writes: every guest on the thread gets it by email. A guest writes:
   // the other guests on the thread and every exec do.
   const members = await threadMembers(lead);
-  if (who.board) {
-    await Promise.all(members.map((m) => noticeGuestMessage({ userId: m.user?.id, email: m.email }, body.trim())));
-  } else {
-    const author = members.find((m) => m.user?.id === who.user.id);
-    await noticeExecsOfReply(id, author?.name ?? null, body.trim());
-    await Promise.all(
-      members.filter((m) => m !== author).map((m) => noticeGuestMessage({ userId: m.user?.id, email: m.email }, body.trim(), author?.name)),
-    );
-  }
+  await later(async () => {
+    if (who.board) {
+      await Promise.all(members.map((m) => noticeGuestMessage({ userId: m.user?.id, email: m.email }, body.trim())));
+    } else {
+      const author = members.find((m) => m.user?.id === who.user.id);
+      await noticeExecsOfReply(id, author?.name ?? null, body.trim());
+      await Promise.all(
+        members.filter((m) => m !== author).map((m) => noticeGuestMessage({ userId: m.user?.id, email: m.email }, body.trim(), author?.name)),
+      );
+    }
+  });
 
   return NextResponse.json(message, { status: 201 });
 }

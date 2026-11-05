@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { markRead, memberThread, messageBody, noticeExecsOfMemberMessage } from "@/lib/inbox";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 const AUTHOR = { select: { id: true, name: true, role: true, accountKind: true } } as const;
 
@@ -40,6 +41,6 @@ export async function POST(request: NextRequest) {
   });
   await markRead(me.user.id, memberThread(me.user.id));
   const who = await prisma.user.findUniqueOrThrow({ where: { id: me.user.id }, select: { id: true, name: true, email: true } });
-  await noticeExecsOfMemberMessage(who, parsed.body);
+  await later(() => noticeExecsOfMemberMessage(who, parsed.body));
   return NextResponse.json(message, { status: 201 });
 }

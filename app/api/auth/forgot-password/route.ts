@@ -8,6 +8,7 @@ import { sendMail } from "@/lib/mailer";
 import { passwordRequestError } from "@/lib/password-request";
 import { prisma } from "@/lib/prisma";
 import { clientKey, overAttemptLimit } from "@/lib/rate-limit";
+import { later } from "@/lib/later";
 
 const LIFETIME_MS = 60 * 60 * 1000;
 
@@ -45,23 +46,19 @@ export async function POST(request: NextRequest) {
     ]);
     // In the fragment, not the query: never sent to a server, so it stays out of request logs.
     const url = `${frontendOrigin()}/reset-password#token=${secret}`;
-    try {
-      await sendMail({
-        to: email,
-        subject: "Reset your LOGICA password",
-        redact: secret,
-        ...renderEmail({
-          preheader: "This link works once and expires in an hour.",
-          heading: "Reset your password",
-          paragraphs: ["Someone asked to reset the password for this LOGICA @ UIC account. If that was you, choose a new one:"],
-          button: { label: "Choose a new password", url },
-          footnote: "This link works once and expires in an hour. If you didn't ask for this, ignore this email; your password hasn't changed.",
-        }),
-      });
-    } catch (err) {
-      // Already in the email log; the caller still gets the generic answer.
-      console.error("password reset email failed", err);
-    }
+    // After the response: the reply takes the same time whether or not the account exists.
+    await later(() => sendMail({
+      to: email,
+      subject: "Reset your LOGICA password",
+      redact: secret,
+      ...renderEmail({
+        preheader: "This link works once and expires in an hour.",
+        heading: "Reset your password",
+        paragraphs: ["Someone asked to reset the password for this LOGICA @ UIC account. If that was you, choose a new one:"],
+        button: { label: "Choose a new password", url },
+        footnote: "This link works once and expires in an hour. If you didn't ask for this, ignore this email; your password hasn't changed.",
+      }),
+    }));
   }
 
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });

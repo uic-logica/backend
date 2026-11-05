@@ -1,5 +1,8 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // One SQL query per findMany/include instead of one per relation level:
+  // each round trip to the database costs ~60ms from the functions.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

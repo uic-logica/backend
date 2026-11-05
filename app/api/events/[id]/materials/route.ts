@@ -4,6 +4,7 @@ import { hasRole } from "@/lib/authz";
 import { notifyEventGoing } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
 import { parseUpload } from "@/lib/upload";
+import { later } from "@/lib/later";
 
 // Vercel refuses request bodies over 4.5 MB and the file arrives base64 (4/3
 // larger), so 3 MB is the most that can actually get here.
@@ -65,11 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
 
   if (materialVisibility === "PUBLIC") {
-    try {
-      await notifyEventGoing(id, `New material posted for ${event.title}: ${material.filename}`, "events");
-    } catch (error) {
-      console.error("Failed to notify event attendees about new material", error);
-    }
+    await later(() => notifyEventGoing(id, `New material posted for ${event.title}: ${material.filename}`, "events"));
   }
 
   return NextResponse.json(material, { status: 201 });

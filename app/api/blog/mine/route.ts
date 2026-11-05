@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { parseBlogInput } from "@/lib/blog";
 import { submitBlogPost } from "@/lib/blog-notify";
 import { prisma } from "@/lib/prisma";
+import { later } from "@/lib/later";
 
 /** The signed-in member's own posts, every status. */
 export async function GET() {
@@ -38,6 +39,6 @@ export async function POST(request: NextRequest) {
       ...(submit && { status: "SUBMITTED", submittedAt: new Date() }),
     },
   });
-  if (submit) await submitBlogPost(post.title, session.user.name, post.id);
+  if (submit) await later(() => submitBlogPost(post.title, session.user.name, post.id));
   return NextResponse.json(post, { status: 201 });
 }
