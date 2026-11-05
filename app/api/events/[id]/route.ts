@@ -42,10 +42,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Expected a JSON object." }, { status: 400 });
   }
 
-  const { title, startsAt, location, description, link } = payload as Record<string, unknown>;
+  const { title, startsAt, endsAt, location, description, link } = payload as Record<string, unknown>;
   let data;
   try {
-    data = parseEventUpdate({ title, startsAt, location, description, link });
+    data = parseEventUpdate({ title, startsAt, endsAt, location, description, link });
   } catch (error) {
     if (error instanceof EventInputError) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;

@@ -1,6 +1,6 @@
 import type { BoardItemKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { eventLink, parseEventUpdate, parseStartsAt } from "@/lib/event-update";
+import { eventLink, parseEndsAt, parseEventUpdate, parseStartsAt } from "@/lib/event-update";
 import { threadLead, threadMembers } from "@/lib/speaker-thread";
 import { noticeApplicant, noticeExecsOfReply, noticeGuestDecision, noticeGuestMessage, noticeGuestScheduled, noticeRsvp } from "@/lib/notices";
 import { notifyUser } from "@/lib/notify";
@@ -349,6 +349,7 @@ export const TOOLS: Tool[] = [
         id: e.id,
         title: e.title,
         startsAt: e.startsAt,
+        endsAt: e.endsAt,
         location: e.location,
         myRsvp: e.rsvps[0]?.status ?? null,
       }));
@@ -626,6 +627,7 @@ export const TOOLS: Tool[] = [
       properties: {
         title: str("What the event is called."),
         startsAt: str("When it starts, as an ISO 8601 timestamp. Leave it out (or send \"TBD\") if the date isn't set yet."),
+        endsAt: str("When it ends, as an ISO 8601 timestamp after startsAt. Optional."),
         location: str("Where it is."),
         description: str("What it is. Line breaks are kept."),
         link: str("An http(s) RSVP or event page, shown as an RSVP button."),
@@ -635,8 +637,10 @@ export const TOOLS: Tool[] = [
     log: (_i, r) => `created the event ${r.title}${r.startsAt ? "" : " (date TBD)"}`,
     run: async (input) => {
       let startsAt: Date | null = null;
+      let endsAt: Date | null = null;
       try {
         startsAt = input.startsAt === undefined ? null : parseStartsAt(input.startsAt);
+        endsAt = startsAt && input.endsAt != null ? parseEndsAt(input.endsAt, startsAt) : null;
       } catch (error) {
         fail((error as Error).message);
       }
@@ -646,12 +650,13 @@ export const TOOLS: Tool[] = [
         data: {
           title,
           startsAt,
+          endsAt,
           location: input.location === undefined ? undefined : String(input.location),
           description: input.description === undefined ? undefined : String(input.description),
           link: eventLink(input.link),
         },
       });
-      return { id: event.id, title: event.title, startsAt: event.startsAt, link: event.link };
+      return { id: event.id, title: event.title, startsAt: event.startsAt, endsAt: event.endsAt, link: event.link };
     },
   },
   {
@@ -666,19 +671,20 @@ export const TOOLS: Tool[] = [
         id: str("The event's id, from list_events."),
         title: str("New title."),
         startsAt: str("New start time, as an ISO 8601 timestamp, or \"TBD\" to clear the date."),
+        endsAt: str("New end time, as an ISO 8601 timestamp, or empty to clear it."),
         location: str("New location, or empty to clear it."),
         description: str("New description, or empty to clear it. Line breaks are kept."),
         link: str("New http(s) RSVP or event page, or empty to clear it."),
       },
       additionalProperties: false,
     },
-    log: (i, r) => `edited the event ${r.title} (${listed(i, ["title", "startsAt", "location", "description", "link"]) || "no changes"})`,
+    log: (i, r) => `edited the event ${r.title} (${listed(i, ["title", "startsAt", "endsAt", "location", "description", "link"]) || "no changes"})`,
     run: async (input) => {
       const id = String(input.id ?? "");
       if (!(await prisma.event.findUnique({ where: { id }, select: { id: true } }))) fail("No event with that id.");
       const data = parseEventUpdate(input);
       const event = await prisma.event.update({ where: { id }, data });
-      return { id: event.id, title: event.title, startsAt: event.startsAt, location: event.location, link: event.link };
+      return { id: event.id, title: event.title, startsAt: event.startsAt, endsAt: event.endsAt, location: event.location, link: event.link };
     },
   },
 

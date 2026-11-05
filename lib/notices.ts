@@ -57,7 +57,7 @@ export async function noticeGuestDecision(guest: Person, previous: string, statu
 }
 
 /** A guest's talk got (or changed) its event. */
-export async function noticeGuestScheduled(guest: Person, event: { title: string; startsAt: Date | null; location: string | null }) {
+export async function noticeGuestScheduled(guest: Person, event: { title: string; startsAt: Date | null; endsAt?: Date | null; location: string | null }) {
   await tell(guest, `Your talk is on the LOGICA calendar: ${event.title}, ${when(event)}.`, "Your LOGICA talk is scheduled", {
     preheader: `${event.title}: ${when(event)}`,
     eyebrow: "Talk scheduled",
@@ -106,7 +106,7 @@ export async function noticeRsvp(userId: string, eventId: string, previous: stri
   const [user, pref, event] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true, role: true, accountKind: true } }),
     prisma.emailPreference.findUnique({ where: { userId } }),
-    prisma.event.findUnique({ where: { id: eventId }, select: { title: true, startsAt: true, location: true, link: true } }),
+    prisma.event.findUnique({ where: { id: eventId }, select: { title: true, startsAt: true, endsAt: true, location: true, link: true } }),
   ]);
   if (!user || !event) return;
   // Something they just did: off means off, otherwise it comes now, never in a summary.
