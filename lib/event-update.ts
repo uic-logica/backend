@@ -17,6 +17,19 @@ export function eventLink(value: unknown): string | null | undefined {
 }
 
 /**
+ * An event picture: a URL from `POST /api/blog/images` (our own upload, so the
+ * site's img-src 'self' CSP shows it), `null` to clear it, `undefined` if not sent.
+ */
+export function eventImage(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string" || !/^\/api\/blog\/images\/[a-z0-9]+$/.test(value)) {
+    throw new EventInputError("`image` must be a picture uploaded from the dashboard.");
+  }
+  return value;
+}
+
+/**
  * Turns an edit request into a Prisma update. Shared by `PATCH /api/events/:id`
  * and the MCP `update_event` tool so the dashboard and agents follow one rule:
  * only the fields sent change, and an empty string clears location,
@@ -55,6 +68,7 @@ export function parseEventUpdate(input: Record<string, unknown>): Prisma.EventUp
     if (input[field] !== undefined) data[field] = input[field] === null || input[field] === "" ? null : String(input[field]);
   }
   if (input.link !== undefined) data.link = eventLink(input.link) ?? null;
+  if (input.image !== undefined) data.image = eventImage(input.image) ?? null;
   if (Object.keys(data).length === 0) throw new EventInputError("Send at least one field to change.");
   return data;
 }
