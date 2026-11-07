@@ -211,6 +211,7 @@ model Event {
   link        String?
   startsAt    DateTime? // null = date TBD: listed as upcoming, no reminders or calendar file until it's set
   endsAt      DateTime? // optional; null = no end time given (calendar files assume an hour)
+  image       String? // a picture uploaded from the dashboard: /api/blog/images/<id>
   createdAt   DateTime  @default(now())
   remindedAt  DateTime? // set once the cron job (app/api/cron/event-reminders) has notified GOING rsvps
 

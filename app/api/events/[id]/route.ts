@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 /**
- * Board+, or a partner club granted this event (EventAccess): change an event's title, time, location, description or link.
+ * Board+, or a partner club granted this event (EventAccess): change an event's title, time, location, description, link or picture.
  * Only the fields sent change; an empty string clears location, description
  * or link. Same rules as the MCP `update_event` tool (lib/event-update.ts).
  */
@@ -42,10 +42,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Expected a JSON object." }, { status: 400 });
   }
 
-  const { title, startsAt, endsAt, location, description, link } = payload as Record<string, unknown>;
+  const { title, startsAt, endsAt, location, description, link, image } = payload as Record<string, unknown>;
   let data;
   try {
-    data = parseEventUpdate({ title, startsAt, endsAt, location, description, link });
+    data = parseEventUpdate({ title, startsAt, endsAt, location, description, link, image });
   } catch (error) {
     if (error instanceof EventInputError) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;

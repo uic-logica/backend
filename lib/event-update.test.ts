@@ -6,6 +6,12 @@ describe("parseEventUpdate", () => {
     expect(parseEventUpdate({ description: "New line\nRoom 1413" })).toEqual({ description: "New line\nRoom 1413" });
   });
 
+  it("takes only our own uploaded pictures, and clears with an empty string", () => {
+    expect(parseEventUpdate({ image: "/api/blog/images/cmabc123" }).image).toBe("/api/blog/images/cmabc123");
+    expect(parseEventUpdate({ image: "" }).image).toBeNull();
+    expect(() => parseEventUpdate({ image: "https://evil.example/x.png" })).toThrow(EventInputError);
+  });
+
   it("trims the title and parses the start time", () => {
     const data = parseEventUpdate({ title: "  Hack night ", startsAt: "2026-11-12T01:00:00.000Z" });
     expect(data.title).toBe("Hack night");
